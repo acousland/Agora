@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+dist/
+.DS_Store
+*.sqlite*
+*.p12
+*.key
+*.pem
+*.crt
+*.cer
+*.log
+*.dmg
+*.zip
