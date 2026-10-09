@@ -81,7 +81,7 @@ AGORA_DATA_DIR=/tmp/agora-demo dist/Agora.app/Contents/MacOS/Agora --demo
 
 ## Release from a Mac
 
-Releases are built locally, without GitHub Actions. The public source, releases and Sparkle feed are in this repository. Private signing keys stay in the login Keychain.
+Releases are built locally, without GitHub Actions. The public source, releases and Sparkle feed are in this repository. Private signing keys are stored in the login Keychain. Publishing uses Sparkle's supported export-and-sign path through the key generator's existing access; an owner-only temporary directory holds the key during signing and is removed on success or failure. Private keys never enter source control, release assets or logs.
 
 1. Update `Assets/version` and `RELEASE_NOTES.md`; commit and push `main`.
 2. Run `AGORA_NOTARY_PROFILE=<saved-profile> scripts/publish-release.sh 1.0.0`.

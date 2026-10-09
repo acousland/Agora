@@ -43,11 +43,8 @@ if [[ $notarized == 1 ]]; then
   xcrun stapler staple "$dmg"
   spctl --assess --type open --context context:primary-signature "$dmg"
 fi
-sparkle=.build/artifacts/sparkle/Sparkle/bin
-"$sparkle/sign_update" --account agora "$dmg" > dist/update-signature.txt
+python3 scripts/sign-update.py "$dmg" > dist/update-signature.txt
 python3 scripts/write-appcast.py "$version" "$dmg" dist/update-signature.txt
-signature=$(python3 -c 'import xml.etree.ElementTree as E; r=E.parse("dist/appcast.xml").getroot(); print(r.find("./channel/item/enclosure").get("{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature"))')
-"$sparkle/sign_update" --account agora --verify "$dmg" "$signature"
 (cd dist && shasum -a 256 "Agora-$version.dmg" > "Agora-$version.dmg.sha256")
 cp RELEASE_NOTES.md dist/release-notes.md
 [[ $notarized == 1 ]] || printf '\nThis release is Developer ID signed but is not notarised.\n' >> dist/release-notes.md
