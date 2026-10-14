@@ -2,7 +2,7 @@
 
 A native macOS personal CRM for the people in your life and the promises you make to them.
 
-Agora runs on your Mac, without an account or a cloud database. Its SwiftUI app, Outlook add-in and local MCP helper share a SQLite library.
+Agora runs on your Mac, without an account or a cloud database. Its SwiftUI app, Outlook add-in and local MCP helper use the selected profile's SQLite library.
 
 ![Agora's native macOS overview with illustrative sample data](docs/preview.png)
 
@@ -20,7 +20,15 @@ Releases are Developer ID signed. See each release's notes for its notarisation 
 - **Timeline** records emails, meetings, calls, messages and notes. Group by date or person and see the elapsed time since each person's previous interaction. These gaps use the full history, including interactions hidden by search or type filters.
 - **Connections** walks through Outlook and MCP setup, JSON import/export and consistent SQLite backups.
 
-Keyboard shortcuts: **⌘N** new commitment, **⇧⌘N** new person, **⌘L** log interaction, **⌘R** refresh.
+Keyboard shortcuts: **⌘N** new commitment, **⇧⌘N** new person, **⌘L** log interaction, **⌘R** refresh, **⌘0** show the main window. Clicking Agora in the Dock reopens the window after it has been closed.
+
+## Profiles
+
+Use the profile selector beneath the Agora logo to switch between **Work**, **University** and any additional profiles. **Manage Profiles…** creates or renames profiles. Your existing records stay in Work at their original location; University and new profiles start empty. The selected profile is remembered after closing the window or quitting the app.
+
+People, commitments, timelines, searches, imports, exports, backups and Outlook captures use only the selected profile. The same person or email can appear independently in both worlds. Switching clears the app's search and selections. Profiles separate local records; they are not password-protected user accounts.
+
+Outlook shows **Saving to [profile]** and uses a separate pairing key for each profile. After switching, connect the selected profile and review the email before saving. Saved keys are remembered per profile; unsaved commitment drafts are cleared on a switch. AI connections use the selected profile when they start and reject operations after a switch. Reconnect your AI client and start a new conversation when changing worlds. Existing AI configurations need **Set up** once in Connections to enable profiles.
 
 ## Outlook for Mac
 
@@ -37,7 +45,7 @@ Microsoft 365 / supported Exchange mailboxes and an organisation policy permitti
 
 ## Local MCP
 
-The bundled `AgoraMCP` executable is a stdio MCP server. The Mac app does not need to be running. Open **Connections** and choose **Set up Codex / ChatGPT**, **Set up Claude Desktop** or **Set up Claude Code**. Setup preserves other servers, creates a private configuration backup, and connects the same library as Agora. Quit and reopen the client after setup. OpenAI setup uses an installed Codex CLI or the copy bundled with ChatGPT desktop.
+The bundled `AgoraMCP` executable is a stdio MCP server. The Mac app does not need to be running. Open **Connections** and choose **Set up Codex / ChatGPT**, **Set up Claude Desktop** or **Set up Claude Code**. Setup preserves other servers, creates a private configuration backup, and enables profile support. Quit and reopen the client after setup or switching profiles. OpenAI setup uses an installed Codex CLI or the copy bundled with ChatGPT desktop.
 
 For other JSON clients, configure:
 
@@ -56,9 +64,9 @@ It exposes ten tools for discovering people, recording interactions, capturing e
 
 ## Your data
 
-The default library is `~/Library/Application Support/Agora/agora.sqlite`. The Outlook pairing key and local certificate are stored privately beside it. Set `AGORA_DATA_DIR` on the app or MCP helper for a separate library. Sample data is never added to the default library. SQLite uses WAL and foreign keys; mutations are transactional and edits require the latest revision. The app refreshes changes from other writers every three seconds while active.
+The profile root is `~/Library/Application Support/Agora`. The original Work database stays at `agora.sqlite`; additional databases and their pairing keys live under `Profiles/<profile-id>/`. Private `profiles.json` records names and the active profile. The local HTTPS certificate is shared across profiles and stays at the root. Set `AGORA_DATA_DIR` on the app for a separate profile root; set `AGORA_PROFILE_ROOT` on MCP to share that root. An explicit `AGORA_DATA_DIR` on MCP retains the older fixed-library mode. Sample data is never added to the default library. SQLite uses WAL and foreign keys; mutations are transactional and edits require the latest revision. The open window refreshes changes every three seconds.
 
-JSON export contains the full library, including email bodies. JSON import adds records atomically and rejects duplicate IDs or email addresses; it never silently replaces existing data. Use a new library directory to restore an entire export. The database backup button uses SQLite's backup API and includes committed WAL changes. Keep backups somewhere appropriate for your personal information.
+JSON export contains the selected profile's full library, including email bodies. JSON import adds records to that profile atomically and rejects duplicate IDs or email addresses; it never silently replaces existing data. Use a new empty profile to restore an entire export. The database backup button uses SQLite's backup API and includes committed WAL changes for that profile. Keep backups somewhere appropriate for your personal information.
 
 The CRM works offline. Outlook's Office.js runtime, add-in installation and Sparkle checks require network access. A connected AI client can read records through MCP and may send them to its model provider according to that client's settings. Agora itself has no analytics or cloud CRM service.
 
@@ -70,10 +78,13 @@ Install Xcode or its Swift command-line tools, then:
 swift test
 python3 scripts/smoke-mcp.py
 scripts/build-app.sh
+python3 scripts/test-outlook.py dist/Agora.app
+node scripts/test-outlook-pane.mjs
+python3 scripts/test-window.py dist/Agora.app
 open dist/Agora.app
 ```
 
-No Node, Electron, Python runtime or external database is needed by the installed app. Python 3 is used only by development and release scripts. SQLite is provided by macOS. Dependencies are pinned in `Package.resolved`: the official Swift MCP SDK and Sparkle.
+No Node, Electron, Python runtime or external database is needed by the installed app. Python 3 and Node are used by development and release checks. SQLite is provided by macOS. Dependencies are pinned in `Package.resolved`: the official Swift MCP SDK and Sparkle.
 
 For isolated sample data:
 

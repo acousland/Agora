@@ -20,7 +20,7 @@ struct Workspace: View {
                         case .timeline: TimelineView()
                         case .connections: ConnectionsView()
                         }
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }.id(model.activeProfile.id).frame(maxWidth: .infinity, maxHeight: .infinity)
                     if model.section == .overview || model.section == .commitments {
                         Divider().opacity(0.55)
                         CommitmentInspector().frame(width: 285)
@@ -28,15 +28,15 @@ struct Workspace: View {
                 }
                 HStack(spacing: 6) {
                     Circle().fill(Style.green).frame(width: 5, height: 5)
-                    Text("Local library").font(.system(size: 10))
+                    Text("\(model.activeProfile.name) profile").font(.system(size: 10)).lineLimit(1)
                     Text("·").foregroundStyle(.tertiary)
                     Text("\(model.people.count) people · \(model.open.count) open commitments").font(.system(size: 10))
                     Spacer()
-                    Text("\(model.notice ?? "Saved on this Mac")").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text("\(model.notice ?? "Saved on this Mac")").font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1).frame(maxWidth: 340, alignment: .trailing)
                 }.foregroundStyle(.secondary).padding(.horizontal, 28).padding(.vertical, 10).background(Style.card.opacity(0.5))
             }.background(Style.canvas)
         }.tint(Style.accent)
-        .onReceive(refresh) { _ in if NSApp.isActive { model.reload() } }
+        .onReceive(refresh) { _ in model.reload() }
         .sheet(item: $model.sheet) { editor in
             switch editor {
             case .person(let person): PersonEditor(person: person)
@@ -44,6 +44,7 @@ struct Workspace: View {
             case .commitment(let commitment, let person): CommitmentEditor(commitment: commitment, personId: person)
             case .interaction(let person): InteractionEditor(personId: person)
             case .source(let interaction): SourceView(item: interaction)
+            case .profiles: ProfilesView()
             }
         }
         .alert("Agora", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("OK") { model.error = nil } } message: { Text(model.error ?? "") }
@@ -56,7 +57,22 @@ struct Workspace: View {
                     Text("agora").font(.system(size: 25, weight: .semibold, design: .rounded)).tracking(-0.7)
                     Text("A PERSONAL CRM").font(.system(size: 8, weight: .medium)).tracking(2).foregroundStyle(.white.opacity(0.4))
                 }
-            }.padding(.top, 53).padding(.horizontal, 23).padding(.bottom, 37)
+            }.padding(.top, 53).padding(.horizontal, 23).padding(.bottom, 24)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("PROFILE").font(.system(size: 8, weight: .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.45))
+                Menu {
+                ForEach(model.profiles) { profile in
+                    Button { model.switchProfile(profile) } label: {
+                        if profile.id == model.activeProfile.id { Label(profile.name, systemImage: "checkmark") }
+                        else { Text(profile.name) }
+                    }
+                }
+                Divider()
+                Button("Manage Profiles…") { model.sheet = .profiles }
+                } label: {
+                    Text(model.activeProfile.name).font(.system(size: 13, weight: .medium)).foregroundStyle(.white).lineLimit(1)
+                }.menuStyle(.borderlessButton).menuIndicator(.visible).frame(maxWidth: .infinity, alignment: .leading).disabled(model.sheet != nil || model.connecting)
+            }.padding(12).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9)).padding(.horizontal, 16).padding(.bottom, 24)
             Text("YOUR SPACE").font(.system(size: 9, weight: .semibold)).tracking(1.5).foregroundStyle(.white.opacity(0.3)).padding(.horizontal, 25).padding(.bottom, 13)
             ForEach(AppModel.Section.allCases, id: \.self) { section in
                 Button {

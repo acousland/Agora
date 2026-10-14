@@ -70,12 +70,13 @@ public enum Day {
 }
 
 public enum AgoraError: LocalizedError {
-    case invalid(String), storage(String), notFound, stale
+    case invalid(String), storage(String), notFound, stale, profileChanged
     public var errorDescription: String? {
         switch self {
         case .invalid(let message), .storage(let message): return message
         case .notFound: return "This record no longer exists. Refresh and try again."
         case .stale: return "This record changed elsewhere. Refresh before saving your changes."
+        case .profileChanged: return "The active Agora profile changed. Reconnect your AI client or Outlook add-in before continuing."
         }
     }
 }

@@ -83,3 +83,5 @@ with tempfile.TemporaryDirectory(prefix="agora-mcp-") as directory:
         process.stdin.close()
         try: process.wait(timeout=5)
         except subprocess.TimeoutExpired: process.terminate(); process.wait(timeout=5)
+
+subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("smoke-profiles.py")), str(binary)], check=True)

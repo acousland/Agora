@@ -19,6 +19,8 @@ python3 scripts/smoke-mcp.py
 scripts/build-app.sh
 app=dist/Agora.app
 python3 scripts/test-outlook.py "$app"
+node scripts/test-outlook-pane.mjs
+python3 scripts/test-window.py "$app"
 profile=${AGORA_NOTARY_PROFILE:-renoir-notary}
 notarized=0
 if xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1; then

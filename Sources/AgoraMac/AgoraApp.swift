@@ -14,6 +14,10 @@ import AgoraCore
     @Published var error: String?
     @Published var notice: String?
     @Published var outlookStatus = "Not configured"
+    @Published var profiles: [LibraryProfile] = []
+    @Published var activeProfile = LibraryProfile(id: "default", name: "Work")
+    @Published var connecting = false
+    var profileManager: ProfileManager?
     var store: Store?
     var captureServer: CaptureServer?
 
@@ -23,8 +27,8 @@ import AgoraCore
         var subtitle: String { switch self { case .overview: "A little attention goes a long way."; case .people: "The people behind your promises."; case .commitments: "Keep track. Follow through."; case .timeline: "Your conversations, remembered."; case .connections: "Your relationships, connected." } }
     }
     enum Editor: Identifiable {
-        case person(Person?), merge(Person), commitment(Commitment?, String?), interaction(String?), source(Interaction)
-        var id: String { switch self { case .person(let p): "person-\(p?.id ?? "new")"; case .merge(let p): "merge-\(p.id)"; case .commitment(let c, _): "promise-\(c?.id ?? "new")"; case .interaction: "interaction"; case .source(let i): "source-\(i.id)" } }
+        case person(Person?), merge(Person), commitment(Commitment?, String?), interaction(String?), source(Interaction), profiles
+        var id: String { switch self { case .person(let p): "person-\(p?.id ?? "new")"; case .merge(let p): "merge-\(p.id)"; case .commitment(let c, _): "promise-\(c?.id ?? "new")"; case .interaction: "interaction"; case .source(let i): "source-\(i.id)"; case .profiles: "profiles" } }
     }
     init() {
         do {
@@ -37,7 +41,9 @@ import AgoraCore
                     throw AgoraError.invalid("Demo mode requires AGORA_DATA_DIR to point to a separate, nonempty library path.")
                 }
             }
-            let store = try Store(); self.store = store
+            let manager = try ProfileManager(); profileManager = manager
+            let selection = try manager.snapshot(); profiles = selection.profiles; activeProfile = selection.active
+            let store = try Store(directory: manager.directory(for: selection.active)); self.store = store
             if demo {
                 if try store.contacts().isEmpty { try Self.seedDemo(store) }
             }
@@ -46,12 +52,52 @@ import AgoraCore
     }
     func perform(_ action: (Store) throws -> Void) {
         guard let store else { error = "The library could not be opened. Quit and reopen Agora."; return }
-        do { try action(store); reload() } catch { self.error = error.localizedDescription }
+        do {
+            if let profileManager { try profileManager.withActiveProfile(expectedID: activeProfile.id) { _ in try action(store) } }
+            else { try action(store) }
+            reload()
+        } catch { self.error = error.localizedDescription }
     }
     func reload() {
-        guard let store else { return }
-        do { let library = try store.snapshot(); people = library.contacts; interactions = library.interactions; commitments = library.commitments }
+        do {
+            if let profileManager {
+                let selection = try profileManager.snapshot()
+                if selection.activeID != activeProfile.id {
+                    let replacement = try Store(directory: profileManager.directory(for: selection.active))
+                    applyProfile(selection, store: replacement)
+                } else { profiles = selection.profiles; activeProfile = selection.active }
+            }
+            guard let store else { return }
+            let library = try store.snapshot(); people = library.contacts; interactions = library.interactions; commitments = library.commitments
+        }
         catch { self.error = error.localizedDescription }
+    }
+    func switchProfile(_ profile: LibraryProfile) {
+        guard let profileManager, !connecting else { return }
+        do {
+            guard sheet == nil || sheet?.id == "profiles" else { throw AgoraError.invalid("Save or cancel your current changes before switching profiles.") }
+            let replacement = try Store(directory: profileManager.directory(for: profile))
+            applyProfile(try profileManager.select(id: profile.id), store: replacement)
+            reload()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func applyProfile(_ selection: ProfileSnapshot, store: Store) {
+        self.store = store; profiles = selection.profiles; activeProfile = selection.active
+        sheet = nil; search = ""; selectedPerson = nil; selectedCommitment = nil
+        people = []; interactions = []; commitments = []; error = nil
+        notice = "\(activeProfile.name) profile · Reconnect AI clients after switching"
+        if let captureServer { captureServer.selectProfile(store: store, profile: activeProfile) }
+        else { startOutlook() }
+    }
+    @discardableResult func createProfile(name: String) -> Bool {
+        guard let profileManager else { return false }
+        do { let profile = try profileManager.create(name: name); switchProfile(profile); return error == nil }
+        catch { self.error = error.localizedDescription; return false }
+    }
+    @discardableResult func renameProfile(_ profile: LibraryProfile, name: String) -> Bool {
+        guard let profileManager else { return false }
+        do { try profileManager.rename(id: profile.id, name: name); reload(); return true }
+        catch { self.error = error.localizedDescription; return false }
     }
     func person(_ id: String) -> Person? { people.first { $0.id == id } }
     var open: [Commitment] { commitments.filter { $0.status == "open" } }
@@ -65,10 +111,19 @@ import AgoraCore
     func startOutlook() {
         guard let store else { return }
         captureServer?.stop(); captureServer = nil
-        guard FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("localhost.p12").path) else { outlookStatus = "Set up local HTTPS to connect"; return }
+        let connectionDirectory = profileManager?.root ?? store.directory
+        guard FileManager.default.fileExists(atPath: connectionDirectory.appendingPathComponent("localhost.p12").path) else { outlookStatus = "Set up local HTTPS to connect"; return }
         do {
-            let server = try CaptureServer(store: store, resourceURL: Bundle.module.url(forResource: "Outlook", withExtension: nil)!)
-            server.onStatus = { [weak self] message in Task { @MainActor in self?.outlookStatus = message } }
+            var port: UInt16 = 3848
+            if let value = ProcessInfo.processInfo.environment["AGORA_TEST_OUTLOOK_PORT"] {
+                let privateLibrary = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Agora").resolvingSymlinksInPath()
+                guard ProcessInfo.processInfo.environment["AGORA_DATA_DIR"]?.isEmpty == false,
+                      connectionDirectory.resolvingSymlinksInPath() != privateLibrary,
+                      let testPort = UInt16(value), testPort > 1023 else { throw AgoraError.invalid("The test port requires a separate test library.") }
+                port = testPort
+            }
+            let server = try CaptureServer(store: store, resourceURL: Bundle.module.url(forResource: "Outlook", withExtension: nil)!, connectionDirectory: connectionDirectory, profileManager: profileManager, profile: activeProfile, port: port)
+            server.onStatus = { [weak self, weak server] message in Task { @MainActor in if self?.captureServer === server { self?.outlookStatus = message } } }
             captureServer = server; try server.start()
         } catch { outlookStatus = error.localizedDescription; FileHandle.standardError.write(Data("Agora Outlook: \(outlookStatus)\n".utf8)) }
     }
@@ -92,6 +147,8 @@ import AgoraCore
 }
 
 @main struct AgoraApp: App {
+    @NSApplicationDelegateAdaptor(AgoraAppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var model = AppModel()
     @StateObject private var updates = Updates()
     init() {
@@ -100,10 +157,13 @@ import AgoraCore
             if let sectionIndex = CommandLine.arguments.firstIndex(of: "--render-section"), CommandLine.arguments.count > sectionIndex + 1,
                let section = AppModel.Section(rawValue: CommandLine.arguments[sectionIndex + 1]) { previewModel.section = section }
             if CommandLine.arguments.contains("--render-source") { previewModel.selectedCommitment = previewModel.commitments.first { $0.interactionId != nil }?.id }
+            if let profileIndex = CommandLine.arguments.firstIndex(of: "--preview-profile"), CommandLine.arguments.count > profileIndex + 1,
+               let profile = previewModel.profiles.first(where: { $0.name == CommandLine.arguments[profileIndex + 1] }) { previewModel.switchProfile(profile) }
             let mergePreview = CommandLine.arguments.contains("--render-merge") && previewModel.people.count > 1
-            let width: CGFloat = mergePreview ? 520 : 1320
-            let height: CGFloat = mergePreview ? 500 : previewModel.section == .connections ? 1700 : 850
-            let content = mergePreview ? AnyView(MergePeopleEditor(source: previewModel.people[0], targetId: previewModel.people[1].id)) : AnyView(Workspace())
+            let profilesPreview = CommandLine.arguments.contains("--render-profiles")
+            let width: CGFloat = profilesPreview ? 560 : mergePreview ? 520 : 1320
+            let height: CGFloat = profilesPreview ? 520 : mergePreview ? 500 : previewModel.section == .connections ? 1850 : 850
+            let content = profilesPreview ? AnyView(ProfilesView()) : mergePreview ? AnyView(MergePeopleEditor(source: previewModel.people[0], targetId: previewModel.people[1].id)) : AnyView(Workspace())
             let view = content.environmentObject(previewModel).environmentObject(Updates()).frame(width: width, height: height).environment(\.colorScheme, .light)
             let hosting = NSHostingView(rootView: view)
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -121,13 +181,22 @@ import AgoraCore
         }
     }
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Agora", id: "main") {
             Workspace().environmentObject(model).environmentObject(updates).frame(minWidth: 1020, minHeight: 680)
-                .onAppear { NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true) }
+                .onAppear {
+                    model.reload()
+                    NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true)
+                    appDelegate.reopen = { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+                    appDelegate.checkWindowReopenIfRequested(profileID: model.activeProfile.id)
+                }
         }
         .defaultSize(width: 1320, height: 850).windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .appInfo) { Button("Check for Updates…") { updates.check() }.disabled(!updates.canCheck) }
+            CommandGroup(after: .appInfo) {
+                Button("Show Agora") { appDelegate.showMainWindow() }.keyboardShortcut("0")
+                Button("Manage Profiles…") { appDelegate.showMainWindow(); model.sheet = .profiles }.disabled(model.sheet != nil || model.connecting)
+                Button("Check for Updates…") { updates.check() }.disabled(!updates.canCheck)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Person…") { model.sheet = .person(nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Commitment…") { model.sheet = .commitment(nil, model.selectedPerson) }.keyboardShortcut("n")

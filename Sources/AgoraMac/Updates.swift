@@ -9,7 +9,8 @@ import Sparkle
     private var observations: [NSKeyValueObservation] = []
     init() {
         let packaged = Bundle.main.bundleIdentifier == "au.com.acousland.Agora"
-        controller = SPUStandardUpdaterController(startingUpdater: packaged, updaterDelegate: nil, userDriverDelegate: nil)
+        let testing = CommandLine.arguments.contains("--render-preview") || CommandLine.arguments.contains("--smoke-window-reopen") || ProcessInfo.processInfo.environment["AGORA_TEST_OUTLOOK_PORT"] != nil
+        controller = SPUStandardUpdaterController(startingUpdater: packaged && !testing, updaterDelegate: nil, userDriverDelegate: nil)
         let updater = controller.updater
         canCheck = updater.canCheckForUpdates
         automaticChecks = updater.automaticallyChecksForUpdates

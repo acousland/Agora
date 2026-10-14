@@ -16,6 +16,17 @@ struct ConnectionsView: View {
                 Text("A few thoughtful connections.").font(.system(size: 29, weight: .semibold)).tracking(-0.8)
                 Text("Capture conversations in Outlook. Give your AI assistant the context to help you follow through.").font(.system(size: 12)).foregroundStyle(.secondary)
                 Card {
+                    HStack(spacing: 14) {
+                        Image(systemName: "person.crop.square").font(.system(size: 25)).foregroundStyle(Style.accent)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("\(model.activeProfile.name) profile").font(.system(size: 16, weight: .semibold))
+                            Text("All records and exports on this screen belong to this profile.").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Manage Profiles…") { model.sheet = .profiles }.buttonStyle(.bordered).disabled(model.connecting)
+                    }
+                }
+                Card {
                     VStack(alignment: .leading, spacing: 18) {
                         HStack(spacing: 14) { Image(systemName: "envelope.badge.shield.half.filled").font(.system(size: 25)).foregroundStyle(Style.accent); VStack(alignment: .leading, spacing: 5) { Text("Outlook for Mac").font(.system(size: 16, weight: .semibold)); Text(model.outlookStatus).font(.system(size: 11)).foregroundStyle(.secondary) }; Spacer(); Pill(text: model.outlookStatus.hasPrefix("Listening") ? "Ready" : "Setup needed", color: model.outlookStatus.hasPrefix("Listening") ? Style.green : Style.orange) }
                         Text("Save the email you're reading, choose the person, and record any promises alongside it. Agora must be open to receive emails.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
@@ -24,7 +35,7 @@ struct ConnectionsView: View {
                         Button(configuring ? "Setting up…" : "Set up local HTTPS") { setupHTTPS() }.buttonStyle(.bordered).disabled(configuring)
                         step("2", "Add Agora to Outlook", "Open Microsoft's add-in installer. Under My add-ins → Add a custom add-in → Add from File, select Agora's manifest.")
                         HStack { Button("Save manifest…") { saveManifest() }.buttonStyle(.bordered); Link("Open Outlook add-in installer ↗", destination: URL(string: "https://aka.ms/olksideload")!).font(.system(size: 11)) }
-                        step("3", "Pair once", "Open an email, choose Apps → Agora, then paste your pairing key into the add-in.")
+                        step("3", "Pair this profile", "Open an email, choose Apps → Agora, then paste this profile's pairing key into the add-in. Each profile has its own key.")
                         HStack { Button(copied == "pairing" ? "Key copied" : "Copy pairing key") { if let token = try? model.store?.pairingToken() { copy(token, kind: "pairing") } }.buttonStyle(.bordered); Button("Rotate key") { model.perform { _ = try $0.rotatePairingToken() }; copied = "" }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).help("Disconnect the current Outlook pairing. Copy the new key and pair again.") }
                         Text("Custom add-ins require a supported Microsoft 365 / Exchange mailbox and may depend on your organisation's add-in policy.").font(.system(size: 10)).foregroundStyle(.tertiary).lineSpacing(3)
                     }
@@ -32,7 +43,7 @@ struct ConnectionsView: View {
                 Card {
                     VStack(alignment: .leading, spacing: 17) {
                         HStack(spacing: 14) { Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 25)).foregroundStyle(Style.accent); VStack(alignment: .leading, spacing: 5) { Text("Local MCP server").font(.system(size: 16, weight: .semibold)); Text("Works with the app open or closed").font(.system(size: 11)).foregroundStyle(.secondary) }; Spacer(); Pill(text: "STDIO", color: Style.green) }
-                        Text("Your AI client launches AgoraMCP and reads the same local library. It can find people, log interactions, and register or complete commitments. Your client controls which records it sends to its model.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
+                        Text("Your AI client launches AgoraMCP in the selected profile. It can find people, log interactions, and register or complete commitments. Reconnect it after switching profiles so an existing conversation cannot write to a different profile.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
                         Text(helperPath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
                         HStack { Button(copied == "mcp" ? "Configuration copied" : "Copy MCP configuration") { copy(mcpConfig, kind: "mcp") }.buttonStyle(.bordered); Button("Copy helper path") { copy(helperPath, kind: "path") }.buttonStyle(.bordered); Link("Connection guide ↗", destination: URL(string: "https://github.com/acousland/Agora/blob/main/docs/MCP.md")!).font(.system(size: 11)) }
                         Divider().opacity(0.5)
@@ -50,14 +61,14 @@ struct ConnectionsView: View {
                             }
                         }
                         Button("Check configuration", systemImage: "arrow.clockwise") { Task { await refreshClientStatus() } }.buttonStyle(.bordered).disabled(checkingClients || settingUpClient)
-                        Text("Green means the saved configuration matches this Agora installation and library. Restart the client after setup; its MCP screen shows the live connection.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
-                        Text("Setup adds agora-local for this library and backs up existing settings. Quit and reopen the client afterward. OpenAI setup uses the Codex CLI, including the copy bundled with ChatGPT, and is shared by desktop, CLI and IDE clients on this Mac.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
+                        Text("Green means the saved configuration matches this Agora installation and its profiles. Restart the client after setup or a profile switch; its MCP screen shows the live connection.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
+                        Text("Setup adds agora-local with profile support and backs up existing settings. Your client controls which records it sends to its model. OpenAI setup uses the Codex CLI bundled with ChatGPT when available.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
                     }
                 }
                 UpdatesView()
                 Card {
                     VStack(alignment: .leading, spacing: 17) {
-                        Label("Your library", systemImage: "internaldrive").font(.system(size: 16, weight: .semibold))
+                        Label("\(model.activeProfile.name) library", systemImage: "internaldrive").font(.system(size: 16, weight: .semibold))
                         Text("Your contacts, conversations and commitments live in SQLite on this Mac. Export a portable JSON archive or create a consistent database backup.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
                         HStack { Button("Export JSON…") { exportLibrary() }; Button("Import JSON…") { importLibrary() }; Button("Back up database…") { backup() }; Button("Show in Finder") { if let store = model.store { NSWorkspace.shared.open(store.directory) } } }.buttonStyle(.bordered).controlSize(.small)
                         Text("Agora \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") · No account required").font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -71,7 +82,7 @@ struct ConnectionsView: View {
     private var mcpConfig: String {
         (try? registration.configurationJSON()) ?? ""
     }
-    private var registration: MCPRegistration { MCPRegistration(helper: URL(fileURLWithPath: helperPath), library: model.store?.directory ?? Store.defaultDirectory) }
+    private var registration: MCPRegistration { MCPRegistration(helper: URL(fileURLWithPath: helperPath), library: model.store?.directory ?? Store.defaultDirectory, profileRoot: model.profileManager?.root) }
     private func configurationBadge(_ status: MCPClientStatus?) -> some View {
         let color = status?.state == .configured ? Style.green : status?.state == .invalid ? Style.red : status == nil ? Color.secondary : Style.orange
         let icon = status?.isConfigured == true ? "checkmark.circle.fill" : status == nil ? "clock" : "exclamationmark.circle.fill"
@@ -90,12 +101,12 @@ struct ConnectionsView: View {
     }
     private func install(_ client: MCPClient) {
         let setup = registration
-        settingUpClient = true
+        settingUpClient = true; model.connecting = true
         Task {
             let error = await Task.detached { () -> String? in
                 do { try setup.install(client); return nil } catch { return error.localizedDescription }
             }.value
-            settingUpClient = false
+            settingUpClient = false; model.connecting = false
             if let error { model.error = error }
             else { model.notice = "\(client.name) configured. Quit and reopen it to connect Agora." }
             await refreshClientStatus()
@@ -111,7 +122,7 @@ struct ConnectionsView: View {
         model.perform { _ in try Data(contentsOf: source).write(to: url, options: .atomic) }
     }
     private func exportLibrary() {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = "Agora-\(Day.string()).json"; panel.allowedContentTypes = [.json]
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "Agora-\(profileFileName)-\(Day.string()).json"; panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.perform { store in let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; try encoder.encode(store.snapshot()).write(to: url, options: .atomic); model.notice = "Library exported" }
     }
@@ -121,21 +132,27 @@ struct ConnectionsView: View {
         model.perform { store in let data = try Data(contentsOf: url); guard data.count <= 100_000_000 else { throw AgoraError.invalid("Import files must be below 100 MB.") }; try store.importLibrary(JSONDecoder().decode(LibraryExport.self, from: data)); model.notice = "Library imported" }
     }
     private func backup() {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = "Agora-\(Day.string())-backup.sqlite"
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "Agora-\(profileFileName)-\(Day.string())-backup.sqlite"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.perform { store in try store.backup(to: url); model.notice = "Database backed up" }
     }
+    private var profileFileName: String {
+        var name = model.activeProfile.name.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: "-")
+        while name.utf8.count > 120 { name.removeLast() }
+        return name.isEmpty ? "Profile" : name
+    }
     private func setupHTTPS() {
         guard let store = model.store, let script = Bundle.main.url(forResource: "setup-outlook", withExtension: "sh") else { model.error = "Run scripts/build-app.sh, then open the built app to set up Outlook."; return }
-        configuring = true
+        let directory = model.profileManager?.root ?? store.directory
+        configuring = true; model.connecting = true
         Task {
             let result = await Task.detached { () -> (Int32, String) in
-                let task = Process(); task.executableURL = URL(fileURLWithPath: "/bin/bash"); task.arguments = [script.path, store.directory.path]
+                let task = Process(); task.executableURL = URL(fileURLWithPath: "/bin/bash"); task.arguments = [script.path, directory.path]
                 let output = Pipe(); task.standardOutput = output; task.standardError = output
                 do { try task.run(); let data = output.fileHandleForReading.readDataToEndOfFile(); task.waitUntilExit(); return (task.terminationStatus, String(decoding: data, as: UTF8.self)) }
                 catch { return (1, error.localizedDescription) }
             }.value
-            configuring = false
+            configuring = false; model.connecting = false
             if result.0 == 0 { model.startOutlook(); model.notice = "Outlook HTTPS configured" }
             else { model.error = result.1 }
         }

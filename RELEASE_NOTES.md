@@ -1,3 +1,13 @@
+# Agora 1.3.0
+
+- Keep Work and University in separate profiles. Your existing library becomes Work without moving its records; University and additional profiles start empty.
+- Switch profiles from the sidebar, and create or rename profiles in Manage Profiles. Keep people, conversations, commitments, search, imports, exports and database backups within the selected profile.
+- Show Outlook's destination profile, remember separate pairing keys, clear unsaved commitments when switching and reject stale saves. Share the Mac's HTTPS setup across profiles.
+- Configure AI clients for profile support. New MCP connections use the selected profile; existing sessions reject reads and writes after a switch until the client reconnects.
+- Reopen the main window from the Dock after closing it. Add Show Agora to the menu bar with Command–0, without opening duplicate windows.
+
+The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+
 # Agora 1.2.2
 
 - Publish a notarised build of the Outlook task pane URL fix from 1.2.1, now that the local notarisation profile is accessible again.

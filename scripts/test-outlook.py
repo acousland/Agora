@@ -15,15 +15,14 @@ app = pathlib.Path(sys.argv[1]).resolve()
 executable = app / "Contents/MacOS/Agora"
 manifest = app / "Contents/Resources/Agora_AgoraMac.bundle/Contents/Resources/Outlook/manifest.xml"
 ET.parse(manifest)
-try:
-    with socket.create_connection(("127.0.0.1", 3848), timeout=1):
-        raise RuntimeError("Port 3848 is in use. Refusing to test a running user's receiver.")
-except ConnectionRefusedError:
-    pass
+with socket.socket() as reservation:
+    reservation.bind(("127.0.0.1", 0))
+    port = reservation.getsockname()[1]
 
 with tempfile.TemporaryDirectory(prefix="agora-outlook-test-") as name, tempfile.TemporaryFile() as log:
     directory = pathlib.Path(name)
-    env = dict(os.environ, AGORA_DATA_DIR=name, AGORA_SKIP_CERT_TRUST="1")
+    env = dict(os.environ, AGORA_DATA_DIR=name, AGORA_SKIP_CERT_TRUST="1", AGORA_TEST_OUTLOOK_PORT=str(port))
+    env.pop("AGORA_PROFILE_ROOT", None)
     subprocess.run([str(root / "scripts/setup-outlook.sh"), name], env=env, check=True)
     context = ssl.create_default_context(cafile=str(directory / "localhost.crt"))
     process = subprocess.Popen([str(executable)], env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
@@ -32,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix="agora-outlook-test-") as name, tempfile
         for _ in range(80):
             if process.poll() is not None:
                 break
-            connection = http.client.HTTPSConnection("localhost", 3848, context=context, timeout=1)
+            connection = http.client.HTTPSConnection("localhost", port, context=context, timeout=1)
             try:
                 connection.request("GET", "/health")
                 response = connection.getresponse()
@@ -47,7 +46,8 @@ with tempfile.TemporaryDirectory(prefix="agora-outlook-test-") as name, tempfile
             time.sleep(0.25)
         if not ready:
             raise RuntimeError("The isolated app did not start its HTTPS receiver.")
-        subprocess.run([sys.executable, str(root / "scripts/smoke-outlook.py"), name], check=True)
+        subprocess.run([sys.executable, str(root / "scripts/smoke-outlook.py"), name, str(port)], check=True)
+        subprocess.run([sys.executable, str(root / "scripts/smoke-outlook-profiles.py"), name, str(port)], check=True)
     finally:
         process.terminate()
         try:

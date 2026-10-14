@@ -29,12 +29,14 @@ public struct MCPClientStatus: Equatable, Sendable {
 public struct MCPRegistration: Sendable {
     public let helper: URL
     public let library: URL
+    public let profileRoot: URL?
     public let home: URL
     public let environment: [String: String]
-    public init(helper: URL, library: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, environment: [String: String] = ProcessInfo.processInfo.environment) {
-        self.helper = helper; self.library = library; self.home = home; self.environment = environment
+    public init(helper: URL, library: URL, profileRoot: URL? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, environment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.helper = helper; self.library = library; self.profileRoot = profileRoot; self.home = home; self.environment = environment
     }
-    public var entry: [String: Any] { ["command": helper.path, "args": [String](), "env": ["AGORA_DATA_DIR": library.path]] }
+    private var libraryEnvironment: [String: String] { profileRoot.map { ["AGORA_PROFILE_ROOT": $0.path] } ?? ["AGORA_DATA_DIR": library.path] }
+    public var entry: [String: Any] { ["command": helper.path, "args": [String](), "env": libraryEnvironment] }
     public func configurationJSON() throws -> String {
         String(decoding: try JSONSerialization.data(withJSONObject: ["mcpServers": ["agora-local": entry]], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
     }
@@ -82,8 +84,14 @@ public struct MCPRegistration: Sendable {
                 return .init(state: .needsUpdate, detail: "The saved settings do not point to this Agora helper. Run setup again.")
             }
             let env = value["env"] as? [String: String] ?? [:]
+            if let profileRoot {
+                guard env["AGORA_PROFILE_ROOT"] == profileRoot.path, (env["AGORA_DATA_DIR"] ?? "").isEmpty else {
+                    return .init(state: .needsUpdate, detail: "Set up this client again to connect Agora profiles instead of a fixed library.")
+                }
+                return .init(state: .configured, detail: "Connected to Agora profiles. Reconnect the client after switching profiles.")
+            }
             let defaultLibrary = home.appendingPathComponent("Library/Application Support/Agora").path
-            let sameLibrary = env["AGORA_DATA_DIR"] == library.path || ((env["AGORA_DATA_DIR"] ?? "").isEmpty && library.path == defaultLibrary)
+            let sameLibrary = (env["AGORA_PROFILE_ROOT"] ?? "").isEmpty && (env["AGORA_DATA_DIR"] == library.path || ((env["AGORA_DATA_DIR"] ?? "").isEmpty && library.path == defaultLibrary))
             guard sameLibrary else { return .init(state: .needsUpdate, detail: "This client points to a different library. Run setup to connect this library.") }
             return .init(state: .configured, detail: "The installed helper and library match the saved settings.")
         } catch { return .init(state: .invalid, detail: "Could not read the client configuration. Check its file and try again.") }
@@ -95,7 +103,8 @@ public struct MCPRegistration: Sendable {
             guard let cli = codexCLI else { throw AgoraError.invalid("Install the Codex CLI, then try again. You can also copy the configuration from the connection guide.") }
             // The supported CLI edits TOML without replacing unrelated settings or servers.
             _ = try backup(url)
-            let result = try run(cli, ["mcp", "add", "agora-local", "--env", "AGORA_DATA_DIR=\(library.path)", "--", helper.path])
+            let setting = libraryEnvironment.first!
+            let result = try run(cli, ["mcp", "add", "agora-local", "--env", "\(setting.key)=\(setting.value)", "--", helper.path])
             guard result.code == 0 else { throw AgoraError.invalid("Codex could not save its MCP configuration. Check the configuration in Codex and try again.") }
         } else {
             let original = try FileManager.default.fileExists(atPath: url.path) ? Data(contentsOf: url) : nil

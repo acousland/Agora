@@ -40,6 +40,28 @@ final class MCPRegistrationTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: url), original)
         }
     }
+    func testProfileAwareSetupMigratesFixedConnectionsAndSurvivesSwitches() throws {
+        try FileManager.default.createDirectory(at: setup.configurationURL(.codex).deletingLastPathComponent(), withIntermediateDirectories: true)
+        let root = home.appendingPathComponent("Profiles Root")
+        let manager = try ProfileManager(root: root)
+        let aware = MCPRegistration(helper: setup.helper, library: root, profileRoot: root, home: home, environment: setup.environment)
+        for client in MCPClient.allCases {
+            if client == .codex && !FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/codex") && !FileManager.default.isExecutableFile(atPath: "/usr/local/bin/codex") { continue }
+            try setup.install(client)
+            XCTAssertEqual(aware.status(client).state, .needsUpdate)
+            try aware.install(client)
+            XCTAssertEqual(aware.status(client).state, .configured, aware.status(client).detail)
+        }
+        let university = try manager.snapshot().profiles[1]
+        try manager.select(id: university.id)
+        let switched = MCPRegistration(helper: setup.helper, library: try manager.directory(for: university), profileRoot: root, home: home, environment: setup.environment)
+        XCTAssertEqual(switched.status(.claudeCode).state, .configured)
+        let entry = switched.entry["env"] as? [String: String]
+        XCTAssertEqual(entry, ["AGORA_PROFILE_ROOT": root.path])
+        XCTAssertEqual(setup.status(.claudeCode).state, .needsUpdate)
+        let other = MCPRegistration(helper: setup.helper, library: root, profileRoot: home.appendingPathComponent("Other"), home: home, environment: setup.environment)
+        XCTAssertEqual(other.status(.claudeCode).state, .needsUpdate)
+    }
     func testTransientHelperIsRejectedAndCustomLibraryIsCopied() throws {
         let transient = MCPRegistration(helper: home.appendingPathComponent("build/AgoraMCP"), library: setup.library, home: home)
         XCTAssertThrowsError(try transient.install(.claudeCode))
