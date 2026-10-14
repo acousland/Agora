@@ -10,7 +10,7 @@ Agora runs on your Mac, without an account or a cloud database. Its SwiftUI app,
 
 Download the latest disk image from [GitHub Releases](https://github.com/acousland/Agora/releases/latest), open it and drag **Agora.app** into Applications. Requires **macOS 14 or later on Apple silicon**. Sparkle checks for future releases; use **Agora → Check for Updates…** for a manual check.
 
-The first release is Developer ID signed. See each release's notes for its notarisation status.
+Releases are Developer ID signed. See each release's notes for its notarisation status. In **Connections → App updates**, choose automatic checks and automatic download / installation.
 
 ## Keep your word
 
@@ -37,7 +37,9 @@ Microsoft 365 / supported Exchange mailboxes and an organisation policy permitti
 
 ## Local MCP
 
-The bundled `AgoraMCP` executable is a stdio MCP server, like Mondrian's local helper. The Mac app does not need to be running. Configure your AI client with:
+The bundled `AgoraMCP` executable is a stdio MCP server. The Mac app does not need to be running. Open **Connections** and choose **Set up Codex / ChatGPT**, **Set up Claude Desktop** or **Set up Claude Code**. Setup preserves other servers, creates a private configuration backup, and connects the same library as Agora. Quit and reopen the client after setup. OpenAI setup uses an installed Codex CLI or the copy bundled with ChatGPT desktop.
+
+For other JSON clients, configure:
 
 ```json
 {

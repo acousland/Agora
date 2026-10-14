@@ -6,6 +6,8 @@ struct ConnectionsView: View {
     @EnvironmentObject var model: AppModel
     @State private var configuring = false
     @State private var copied = ""
+    @State private var clientStatus: [MCPClient: String] = [:]
+    @State private var settingUpClient = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -31,8 +33,21 @@ struct ConnectionsView: View {
                         Text("Your AI client launches AgoraMCP and reads the same local library. It can find people, log interactions, and register or complete commitments. Your client controls which records it sends to its model.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
                         Text(helperPath).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
                         HStack { Button(copied == "mcp" ? "Configuration copied" : "Copy MCP configuration") { copy(mcpConfig, kind: "mcp") }.buttonStyle(.bordered); Button("Copy helper path") { copy(helperPath, kind: "path") }.buttonStyle(.bordered); Link("Connection guide ↗", destination: URL(string: "https://github.com/acousland/Agora/blob/main/docs/MCP.md")!).font(.system(size: 11)) }
+                        Divider().opacity(0.5)
+                        ForEach(MCPClient.allCases, id: \.self) { client in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(client.name).font(.system(size: 12, weight: .medium))
+                                    Text(clientStatus[client] ?? "Checking configuration…").font(.system(size: 11)).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Set up \(client.name)") { install(client) }.buttonStyle(.bordered).disabled(settingUpClient || model.store == nil)
+                            }
+                        }
+                        Text("Setup adds agora-local for this library and backs up existing settings. Quit and reopen the client afterward. OpenAI setup uses the Codex CLI, including the copy bundled with ChatGPT, and is shared by desktop, CLI and IDE clients on this Mac.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
                     }
                 }
+                UpdatesView()
                 Card {
                     VStack(alignment: .leading, spacing: 17) {
                         Label("Your library", systemImage: "internaldrive").font(.system(size: 16, weight: .semibold))
@@ -42,12 +57,29 @@ struct ConnectionsView: View {
                     }
                 }
             }.padding(32).frame(maxWidth: 920, alignment: .leading).frame(maxWidth: .infinity)
-        }
+        }.task { await refreshClientStatus() }
     }
     private var helperPath: String { Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/AgoraMCP").path : URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().appendingPathComponent("AgoraMCP").path }
     private var mcpConfig: String {
-        let configuration: [String: Any] = ["mcpServers": ["agora-local": ["command": helperPath, "args": []]]]
-        return String(decoding: (try? JSONSerialization.data(withJSONObject: configuration, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
+        (try? registration.configurationJSON()) ?? ""
+    }
+    private var registration: MCPRegistration { MCPRegistration(helper: URL(fileURLWithPath: helperPath), library: model.store?.directory ?? Store.defaultDirectory) }
+    private func refreshClientStatus() async {
+        let setup = registration
+        clientStatus = await Task.detached { Dictionary(uniqueKeysWithValues: MCPClient.allCases.map { ($0, setup.status($0)) }) }.value
+    }
+    private func install(_ client: MCPClient) {
+        let setup = registration
+        settingUpClient = true
+        Task {
+            let error = await Task.detached { () -> String? in
+                do { try setup.install(client); return nil } catch { return error.localizedDescription }
+            }.value
+            settingUpClient = false
+            if let error { model.error = error }
+            else { model.notice = "\(client.name) configured. Quit and reopen it to connect Agora." }
+            await refreshClientStatus()
+        }
     }
     private func copy(_ text: String, kind: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string); copied = kind }
     private func step(_ number: String, _ title: String, _ detail: String) -> some View {

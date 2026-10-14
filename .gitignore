@@ -11,3 +11,4 @@ dist/
 *.log
 *.dmg
 *.zip
+__pycache__/

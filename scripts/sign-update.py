@@ -23,4 +23,6 @@ with tempfile.TemporaryDirectory(prefix="agora-sparkle-sign-") as directory:
     if not signature:
         raise SystemExit("Sparkle did not produce a signature.")
     subprocess.run([str(tools / "sign_update"), "--ed-key-file", str(key), "--verify", str(archive), signature.group(1)], check=True, stdout=subprocess.DEVNULL)
+    public_key = (root / "Assets/sparkle-public-key").read_text().strip()
+    subprocess.run(["swift", str(root / "scripts/verify-update.swift"), str(archive), public_key, signature.group(1)], check=True, stdout=subprocess.DEVNULL)
     print(signed.stdout.strip())

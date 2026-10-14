@@ -2,6 +2,26 @@
 
 Agora ships with a standalone stdio MCP server. It shares the native app's SQLite library and runs while the app is closed. Install the app into `/Applications` or `~/Applications` before registering the helper; don't use a mounted disk-image or temporary build path.
 
+## Automatic setup
+
+Open **Connections** and select the setup button for **Codex / ChatGPT**, **Claude Desktop** or **Claude Code**. Quit and reopen that client after setup. Agora adds `agora-local`, preserves unrelated configuration and servers, and saves a private `agora-backup-…` copy beside existing configuration files. Setup explicitly records `AGORA_DATA_DIR` so the client opens the same library as the app.
+
+- Codex / ChatGPT: uses the official `codex mcp add` command, discovering either an installed CLI or the CLI bundled with ChatGPT desktop. The shared configuration is `~/.codex/config.toml` (or under `CODEX_HOME`). Verify with `codex mcp get agora-local --json`.
+- Claude Desktop: merges into `~/Library/Application Support/Claude/claude_desktop_config.json`.
+- Claude Code: merges into the user-scoped `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`). Project settings and managed policy can take precedence over user settings. Verify with `claude mcp get agora-local`.
+
+The status in Agora reports saved configuration, rather than a live connection inside another app. The connected client's MCP status is the final check. ChatGPT desktop, Codex CLI and the IDE extension share configuration for the same local Codex host; web and cloud chats do not read local configuration. See [OpenAI's MCP guide](https://learn.chatgpt.com/docs/extend/mcp), [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp) and [Claude Desktop's local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+
+For command-line setup, the installed helper also accepts:
+
+```sh
+/Applications/Agora.app/Contents/MacOS/AgoraMCP --configure-client codex
+/Applications/Agora.app/Contents/MacOS/AgoraMCP --configure-client claude-desktop
+/Applications/Agora.app/Contents/MacOS/AgoraMCP --configure-client claude-code
+```
+
+Set `AGORA_DATA_DIR` on the setup command for a custom library. Setup does not require the app to run, does not seed a library, and writes its confirmation to stderr. App updates replace the helper at the same path, so configuration survives updates; restart the client to launch the new helper.
+
 ## Claude Desktop and other JSON clients
 
 Merge this entry into the client's existing `mcpServers` object, preserving other servers, then restart the client:

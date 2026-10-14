@@ -84,18 +84,19 @@ import AgoraCore
 
 @main struct AgoraApp: App {
     @StateObject private var model = AppModel()
-    private let updater = SPUStandardUpdaterController(startingUpdater: Bundle.main.bundleIdentifier == "au.com.acousland.Agora", updaterDelegate: nil, userDriverDelegate: nil)
+    @StateObject private var updates = Updates()
     init() {
         if let index = CommandLine.arguments.firstIndex(of: "--render-preview"), CommandLine.arguments.count > index + 1 {
             let previewModel = AppModel()
             if let sectionIndex = CommandLine.arguments.firstIndex(of: "--render-section"), CommandLine.arguments.count > sectionIndex + 1,
                let section = AppModel.Section(rawValue: CommandLine.arguments[sectionIndex + 1]) { previewModel.section = section }
             if CommandLine.arguments.contains("--render-source") { previewModel.selectedCommitment = previewModel.commitments.first { $0.interactionId != nil }?.id }
-            let view = Workspace().environmentObject(previewModel).frame(width: 1320, height: 850).environment(\.colorScheme, .light)
+            let height: CGFloat = previewModel.section == .connections ? 1700 : 850
+            let view = Workspace().environmentObject(previewModel).environmentObject(Updates()).frame(width: 1320, height: height).environment(\.colorScheme, .light)
             let hosting = NSHostingView(rootView: view)
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 850), styleMask: [.borderless], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = hosting
-            hosting.frame = NSRect(x: 0, y: 0, width: 1320, height: 850)
+            hosting.frame = NSRect(x: 0, y: 0, width: 1320, height: height)
             hosting.layoutSubtreeIfNeeded()
             if let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
                 hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
@@ -106,12 +107,12 @@ import AgoraCore
     }
     var body: some Scene {
         WindowGroup {
-            Workspace().environmentObject(model).frame(minWidth: 1020, minHeight: 680)
+            Workspace().environmentObject(model).environmentObject(updates).frame(minWidth: 1020, minHeight: 680)
                 .onAppear { NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true) }
         }
         .defaultSize(width: 1320, height: 850).windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .appInfo) { Button("Check for Updates…") { updater.checkForUpdates(nil) } }
+            CommandGroup(after: .appInfo) { Button("Check for Updates…") { updates.check() }.disabled(!updates.canCheck) }
             CommandGroup(replacing: .newItem) {
                 Button("New Person…") { model.sheet = .person(nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Commitment…") { model.sheet = .commitment(nil, model.selectedPerson) }.keyboardShortcut("n")

@@ -113,7 +113,8 @@ public final class Store: @unchecked Sendable {
     @discardableResult public func createContact(name: String, email address: String = "", company: String = "", role: String = "", tags: [String] = [], notes: String = "") throws -> Person {
         try transaction {
             let now = Date().timeIntervalSince1970
-            let person = Person(id: UUID().uuidString, name: try clean(name, field: "Name", required: true, limit: 200), email: try email(address), company: try clean(company, field: "Company", limit: 200), role: try clean(role, field: "Role", limit: 200), tags: try tags.prefix(30).map { try clean($0, field: "Tag", required: true, limit: 50) }, notes: try clean(notes, field: "Notes"), createdAt: now, updatedAt: now, revision: 1)
+            guard tags.count <= 30 else { throw AgoraError.invalid("Use at most 30 tags.") }
+            let person = Person(id: UUID().uuidString, name: try clean(name, field: "Name", required: true, limit: 200), email: try email(address), company: try clean(company, field: "Company", limit: 200), role: try clean(role, field: "Role", limit: 200), tags: try tags.map { try clean($0, field: "Tag", required: true, limit: 50) }, notes: try clean(notes, field: "Notes"), createdAt: now, updatedAt: now, revision: 1)
             try execute("INSERT INTO contacts VALUES (?, ?, ?)", [person.id, person.email, try json(person)])
             return person
         }
@@ -129,6 +130,7 @@ public final class Store: @unchecked Sendable {
         try transaction {
             let current = try contact(person.id)
             guard current.revision == person.revision else { throw AgoraError.stale }
+            guard person.revision < Int.max else { throw AgoraError.invalid("This record's revision limit has been reached.") }
             var value = person
             value.name = try clean(value.name, field: "Name", required: true, limit: 200); value.email = try email(value.email)
             value.company = try clean(value.company, field: "Company", limit: 200); value.role = try clean(value.role, field: "Role", limit: 200)
@@ -183,6 +185,7 @@ public final class Store: @unchecked Sendable {
         try transaction {
             let current = try commitment(value.id)
             guard current.revision == value.revision else { throw AgoraError.stale }
+            guard value.revision < Int.max else { throw AgoraError.invalid("This record's revision limit has been reached.") }
             var value = try validate(value)
             value.createdAt = current.createdAt; value.updatedAt = Date().timeIntervalSince1970; value.revision += 1
             value.completedAt = value.status == "done" ? (current.completedAt ?? value.updatedAt) : nil
@@ -197,12 +200,14 @@ public final class Store: @unchecked Sendable {
         guard library.schemaVersion == 1 else { throw AgoraError.invalid("Unsupported export version.") }
         guard library.contacts.count + library.interactions.count + library.commitments.count <= 100000 else { throw AgoraError.invalid("This export exceeds 100,000 records.") }
         try transaction {
-            for person in library.contacts {
-                guard !person.id.isEmpty, person.revision > 0, person.createdAt.isFinite, person.updatedAt.isFinite else { throw AgoraError.invalid("Invalid imported contact.") }
-                _ = try clean(person.name, field: "Name", required: true, limit: 200); _ = try email(person.email)
+            for var person in library.contacts {
+                guard !person.id.isEmpty, person.revision > 0, person.revision < Int.max, person.createdAt.isFinite, person.updatedAt.isFinite else { throw AgoraError.invalid("Invalid imported contact.") }
+                person.name = try clean(person.name, field: "Name", required: true, limit: 200); person.email = try email(person.email)
+                person.company = try clean(person.company, field: "Company", limit: 200); person.role = try clean(person.role, field: "Role", limit: 200)
                 guard person.tags.count <= 30 else { throw AgoraError.invalid("Too many tags.") }
-                _ = try clean(person.notes, field: "Notes")
-                try execute("INSERT INTO contacts VALUES (?, ?, ?)", [person.id, person.email.lowercased(), try json(person)])
+                person.tags = try person.tags.map { try clean($0, field: "Tag", required: true, limit: 50) }
+                person.notes = try clean(person.notes, field: "Notes")
+                try execute("INSERT INTO contacts VALUES (?, ?, ?)", [person.id, person.email, try json(person)])
             }
             for item in library.interactions {
                 _ = try contact(item.contactId)
@@ -212,7 +217,7 @@ public final class Store: @unchecked Sendable {
             }
             for item in library.commitments {
                 let item = try validate(item)
-                guard !item.id.isEmpty, item.revision > 0, item.createdAt.isFinite, item.updatedAt.isFinite else { throw AgoraError.invalid("Invalid imported commitment.") }
+                guard !item.id.isEmpty, item.revision > 0, item.revision < Int.max, item.createdAt.isFinite, item.updatedAt.isFinite else { throw AgoraError.invalid("Invalid imported commitment.") }
                 try execute("INSERT INTO commitments VALUES (?, ?, ?, ?)", [item.id, item.contactId, item.interactionId, try json(item)])
             }
         }
@@ -262,7 +267,11 @@ public final class Store: @unchecked Sendable {
         }
     }
     public func rotatePairingToken() throws -> String {
-        try synchronized { try FileManager.default.removeItem(at: directory.appendingPathComponent("outlook-token")); return try pairingToken() }
+        try synchronized {
+            let url = directory.appendingPathComponent("outlook-token")
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            return try pairingToken()
+        }
     }
     public func backup(to url: URL) throws {
         try synchronized {

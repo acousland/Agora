@@ -11,6 +11,9 @@ tag="v$version"
 git fetch --quiet origin
 [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || { echo "Push main before publishing" >&2; exit 1; }
 ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1 || { echo "$tag already exists" >&2; exit 1; }
+identity=${AGORA_SIGNING_IDENTITY:-$(security find-identity -v -p codesigning | sed -nE 's/.*"(Developer ID Application: [^"]+)".*/\1/p' | head -1)}
+[[ $identity == "Developer ID Application:"* ]] || { echo "Publishing requires a Developer ID Application signing identity." >&2; exit 1; }
+export AGORA_SIGNING_IDENTITY="$identity"
 swift test
 python3 scripts/smoke-mcp.py
 scripts/build-app.sh

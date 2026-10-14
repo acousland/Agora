@@ -95,4 +95,25 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
         XCTAssertNotEqual(try store.rotatePairingToken(), token)
     }
+    func testImportedEmailIsNormalizedBeforeUniquenessCheck() throws {
+        var person = try store.createContact(name: "Maya", email: "maya@example.com")
+        person.id = "imported-person"; person.email = " MAYA@EXAMPLE.COM "
+        var library = try store.snapshot(); library.contacts = [person]; library.interactions = []; library.commitments = []
+        XCTAssertThrowsError(try store.importLibrary(library))
+        XCTAssertEqual(try store.contacts().count, 1)
+        person.email = " OTHER@EXAMPLE.COM "; person.name = " Maya "; person.tags = [" Friend "]
+        library.contacts = [person]; try store.importLibrary(library)
+        let imported = try store.contact(person.id)
+        XCTAssertEqual(imported.email, "other@example.com"); XCTAssertEqual(imported.name, "Maya"); XCTAssertEqual(imported.tags, ["Friend"])
+        person.id = "bad-tag"; person.email = "third@example.com"; person.tags = [""]
+        library.contacts = [person]; XCTAssertThrowsError(try store.importLibrary(library))
+        XCTAssertThrowsError(try store.createContact(name: "Too many tags", tags: Array(repeating: "tag", count: 31)))
+    }
+    func testRotationBeforePairingAndImportRevisionLimit() throws {
+        XCTAssertEqual(try store.rotatePairingToken().count, 64)
+        var person = try store.createContact(name: "Maya")
+        person.id = "overflow"; person.revision = Int.max
+        var library = try store.snapshot(); library.contacts = [person]
+        XCTAssertThrowsError(try store.importLibrary(library))
+    }
 }
