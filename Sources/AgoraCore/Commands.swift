@@ -65,7 +65,7 @@ public enum Commands {
             return ["contacts": library.contacts.count, "open": open.count, "overdue": try object(open.filter(\.overdue)), "dueToday": try object(open.filter { $0.dueDate == Day.string() }), "waiting": try object(open.filter { $0.direction == "they_owe" }), "recentInteractions": try object(Array(library.interactions.prefix(10)))] as [String: Any]
         case "list_contacts":
             let query = (args["search"] as? String ?? "").lowercased()
-            return try page(store.contacts().filter { query.isEmpty || [$0.name, $0.email, $0.company, $0.tags.joined(separator: " ")].joined(separator: " ").lowercased().contains(query) }, args, key: "contacts")
+            return try page(store.contacts().filter { query.isEmpty || [$0.name, $0.emailAddresses.joined(separator: " "), $0.company, $0.tags.joined(separator: " ")].joined(separator: " ").lowercased().contains(query) }, args, key: "contacts")
         case "get_contact":
             let id = try string(args, "id"), library = try store.snapshot()
             return ["contact": try object(store.contact(id)), "interactions": try object(library.interactions.filter { $0.contactId == id }), "commitments": try object(library.commitments.filter { $0.contactId == id })]

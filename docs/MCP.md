@@ -50,6 +50,8 @@ command = "/Applications/Agora.app/Contents/MacOS/AgoraMCP"
 
 ## Tools
 
+Merged people can include `alternateEmails` in their profile. Contact search and email capture recognise these addresses. Update operations preserve them; merging and deletion are available in the native app's People menu. A retained duplicate interaction may include `duplicateExternalId`, preserving email-capture deduplication after a merge.
+
 | Tool | Purpose |
 |---|---|
 | `get_overview` | Counts, overdue promises, due-today items, waiting-on-others and recent interactions |

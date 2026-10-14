@@ -93,8 +93,29 @@ public final class Store: @unchecked Sendable {
         guard value.isEmpty || (value.split(separator: "@").count == 2 && !value.contains(where: \.isWhitespace) && !value.hasSuffix("@")) else { throw AgoraError.invalid("Enter a valid email address.") }
         return value
     }
+    private func aliases(_ values: [String]?, primary: String) throws -> [String]? {
+        var result: [String] = []
+        for address in values ?? [] {
+            let normalized = try email(address)
+            guard !normalized.isEmpty else { throw AgoraError.invalid("An alternate email address cannot be empty.") }
+            if normalized != primary && !result.contains(normalized) { result.append(normalized) }
+        }
+        guard result.count <= 100 else { throw AgoraError.invalid("Use at most 100 alternate email addresses.") }
+        return result.isEmpty ? nil : result
+    }
+    private func checkEmailsAvailable(_ addresses: [String], excluding ids: Set<String> = []) throws {
+        let wanted = Set(addresses)
+        guard !(try contacts()).contains(where: { !ids.contains($0.id) && !$0.emailAddresses.filter { wanted.contains($0.lowercased()) }.isEmpty }) else {
+            throw AgoraError.invalid("An email address already belongs to another person. Merge their records instead.")
+        }
+    }
+    private func backupBeforePeopleChange(_ operation: String) throws {
+        let folder = directory.appendingPathComponent("Backups", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try backup(to: folder.appendingPathComponent("before-\(operation)-\(UUID().uuidString).sqlite"))
+    }
     public func contacts() throws -> [Person] { try synchronized { try all("contacts", as: Person.self).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending } } }
-    public func interactions() throws -> [Interaction] { try synchronized { try all("interactions", as: Interaction.self).sorted { $0.occurredAt > $1.occurredAt } } }
+    public func interactions() throws -> [Interaction] { try synchronized { try all("interactions", as: Interaction.self).sorted { ($0.occurredAt, $0.id) > ($1.occurredAt, $1.id) } } }
     public func commitments() throws -> [Commitment] {
         try synchronized { try all("commitments", as: Commitment.self).sorted { ($0.dueDate ?? "9999", $0.createdAt) < ($1.dueDate ?? "9999", $1.createdAt) } }
     }
@@ -115,6 +136,7 @@ public final class Store: @unchecked Sendable {
             let now = Date().timeIntervalSince1970
             guard tags.count <= 30 else { throw AgoraError.invalid("Use at most 30 tags.") }
             let person = Person(id: UUID().uuidString, name: try clean(name, field: "Name", required: true, limit: 200), email: try email(address), company: try clean(company, field: "Company", limit: 200), role: try clean(role, field: "Role", limit: 200), tags: try tags.map { try clean($0, field: "Tag", required: true, limit: 50) }, notes: try clean(notes, field: "Notes"), createdAt: now, updatedAt: now, revision: 1)
+            try checkEmailsAvailable(person.emailAddresses)
             try execute("INSERT INTO contacts VALUES (?, ?, ?)", [person.id, person.email, try json(person)])
             return person
         }
@@ -133,6 +155,9 @@ public final class Store: @unchecked Sendable {
             guard person.revision < Int.max else { throw AgoraError.invalid("This record's revision limit has been reached.") }
             var value = person
             value.name = try clean(value.name, field: "Name", required: true, limit: 200); value.email = try email(value.email)
+            // Merges manage alternate addresses; ordinary profile edits preserve them.
+            value.alternateEmails = try aliases(current.alternateEmails, primary: value.email)
+            try checkEmailsAvailable(value.emailAddresses, excluding: [value.id])
             value.company = try clean(value.company, field: "Company", limit: 200); value.role = try clean(value.role, field: "Role", limit: 200)
             guard value.tags.count <= 30 else { throw AgoraError.invalid("Use at most 30 tags.") }
             value.tags = try value.tags.map { try clean($0, field: "Tag", required: true, limit: 50) }
@@ -142,11 +167,68 @@ public final class Store: @unchecked Sendable {
             return value
         }
     }
-    public func deleteContact(_ id: String) throws {
-        try transaction {
+    public func deleteContact(_ id: String, includingHistory: Bool = false, expectedRevision: Int? = nil, expectedInteractionCount: Int? = nil, expectedCommitmentCount: Int? = nil) throws {
+        try synchronized {
             _ = try contact(id)
-            guard try rows("SELECT id FROM commitments WHERE contact_id=? UNION SELECT id FROM interactions WHERE contact_id=?", [id, id]).isEmpty else { throw AgoraError.invalid("This person has interactions or commitments. Keep their record to preserve your history.") }
-            try execute("DELETE FROM contacts WHERE id=?", [id])
+            if includingHistory { try backupBeforePeopleChange("delete") }
+            try transaction {
+                let person = try contact(id)
+                if let expectedRevision, person.revision != expectedRevision { throw AgoraError.stale }
+                let interactions = try rows("SELECT id FROM interactions WHERE contact_id=?", [id]).count
+                let commitments = try rows("SELECT id FROM commitments WHERE contact_id=?", [id]).count
+                if let expectedInteractionCount, interactions != expectedInteractionCount { throw AgoraError.stale }
+                if let expectedCommitmentCount, commitments != expectedCommitmentCount { throw AgoraError.stale }
+                guard includingHistory || (interactions == 0 && commitments == 0) else { throw AgoraError.invalid("This person has interactions or commitments. Confirm deletion of their history or merge their record with another person.") }
+                try execute("DELETE FROM commitments WHERE contact_id=?", [id])
+                try execute("DELETE FROM interactions WHERE contact_id=?", [id])
+                try execute("DELETE FROM contacts WHERE id=?", [id])
+            }
+        }
+    }
+    @discardableResult public func mergeContact(_ sourceId: String, into targetId: String, expectedSourceRevision: Int, expectedTargetRevision: Int) throws -> Person {
+        guard sourceId != targetId else { throw AgoraError.invalid("Choose two different people to merge.") }
+        return try synchronized {
+            _ = try contact(sourceId); _ = try contact(targetId)
+            try backupBeforePeopleChange("merge")
+            return try transaction {
+                let source = try contact(sourceId), target = try contact(targetId)
+                guard source.revision == expectedSourceRevision, target.revision == expectedTargetRevision else { throw AgoraError.stale }
+                guard target.revision < Int.max else { throw AgoraError.invalid("This record's revision limit has been reached.") }
+                var merged = target
+                if merged.email.isEmpty { merged.email = source.email }
+                merged.alternateEmails = try aliases(target.emailAddresses + source.emailAddresses, primary: merged.email)
+                try checkEmailsAvailable(merged.emailAddresses, excluding: [sourceId, targetId])
+                if merged.company.isEmpty { merged.company = source.company }
+                if merged.role.isEmpty { merged.role = source.role }
+                var tags: [String] = []
+                for tag in target.tags + source.tags where !tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) { tags.append(tag) }
+                guard tags.count <= 30 else { throw AgoraError.invalid("The merged person would have more than 30 tags. Reduce their tags and try again.") }
+                merged.tags = tags
+                var otherDetails: [String] = []
+                if source.name != target.name { otherDetails.append("Previous name: \(source.name)") }
+                if !source.company.isEmpty && source.company != merged.company { otherDetails.append("Other company: \(source.company)") }
+                if !source.role.isEmpty && source.role != merged.role { otherDetails.append("Other role: \(source.role)") }
+                if !source.notes.isEmpty && source.notes != target.notes { otherDetails.append(source.notes) }
+                if !otherDetails.isEmpty { merged.notes = ([target.notes].filter { !$0.isEmpty } + ["Merged from \(source.name):\n" + otherDetails.joined(separator: "\n")]).joined(separator: "\n\n") }
+                merged.notes = try clean(merged.notes, field: "Combined notes")
+                merged.revision += 1; merged.updatedAt = Date().timeIntervalSince1970
+                for var item in try interactions().filter({ $0.contactId == sourceId }) {
+                    item.contactId = targetId
+                    if let external = item.externalId, !(try rows("SELECT id FROM interactions WHERE contact_id=? AND external_id=?", [targetId, external])).isEmpty {
+                        // Keep both conversation copies and their source links. The target copy retains the capture identifier.
+                        item.duplicateExternalId = external; item.externalId = nil
+                    }
+                    try execute("UPDATE interactions SET contact_id=?, external_id=?, data=? WHERE id=?", [targetId, item.externalId, try json(item), item.id])
+                }
+                for var item in try commitments().filter({ $0.contactId == sourceId }) {
+                    guard item.revision < Int.max else { throw AgoraError.invalid("A commitment's revision limit has been reached.") }
+                    item.contactId = targetId; item.revision += 1; item.updatedAt = merged.updatedAt
+                    try execute("UPDATE commitments SET contact_id=?, data=? WHERE id=?", [targetId, try json(item), item.id])
+                }
+                try execute("DELETE FROM contacts WHERE id=?", [sourceId])
+                try execute("UPDATE contacts SET email=?, data=? WHERE id=?", [merged.email, try json(merged), targetId])
+                return merged
+            }
         }
     }
     @discardableResult public func logInteraction(contactId: String, kind: String, subject: String, body: String = "", occurredAt: Double = Date().timeIntervalSince1970) throws -> Interaction {
@@ -203,6 +285,8 @@ public final class Store: @unchecked Sendable {
             for var person in library.contacts {
                 guard !person.id.isEmpty, person.revision > 0, person.revision < Int.max, person.createdAt.isFinite, person.updatedAt.isFinite else { throw AgoraError.invalid("Invalid imported contact.") }
                 person.name = try clean(person.name, field: "Name", required: true, limit: 200); person.email = try email(person.email)
+                person.alternateEmails = try aliases(person.alternateEmails, primary: person.email)
+                try checkEmailsAvailable(person.emailAddresses)
                 person.company = try clean(person.company, field: "Company", limit: 200); person.role = try clean(person.role, field: "Role", limit: 200)
                 guard person.tags.count <= 30 else { throw AgoraError.invalid("Too many tags.") }
                 person.tags = try person.tags.map { try clean($0, field: "Tag", required: true, limit: 50) }
@@ -230,7 +314,7 @@ public final class Store: @unchecked Sendable {
             guard !normalized.isEmpty else { throw AgoraError.invalid("The email contact needs an address.") }
             _ = try clean(external, field: "Message ID", required: true, limit: 4096)
             let person: Person
-            if let existing = try rows("SELECT data FROM contacts WHERE email=?", [normalized]).first?.first { person = try decoder.decode(Person.self, from: Data(existing.utf8)) }
+            if let existing = try contacts().first(where: { $0.emailAddresses.contains(normalized) }) { person = existing }
             else { person = try insertContact(name: name, address: normalized) }
             let interaction: Interaction
             var duplicate = false
@@ -243,11 +327,12 @@ public final class Store: @unchecked Sendable {
             let drafts = payload["commitments"] as? [[String: Any]] ?? []
             guard drafts.count <= 20 else { throw AgoraError.invalid("Capture at most 20 commitments at once.") }
             var ids: [String] = []
+            let matchingInteractions = Set(try interactions().filter { $0.contactId == person.id && ($0.externalId == external || $0.duplicateExternalId == external) }.map(\.id))
             for draft in drafts {
                 guard Set(draft.keys).isSubset(of: ["title", "dueDate", "direction", "priority", "notes"]), draft.values.allSatisfy({ $0 is String }) else { throw AgoraError.invalid("Commitment fields must be title and optional dueDate, direction, priority and notes strings.") }
                 guard let title = draft["title"] as? String else { throw AgoraError.invalid("Each commitment needs a title.") }
                 let cleaned = try clean(title, field: "Commitment", required: true, limit: 500)
-                if let existing = try commitments().first(where: { $0.interactionId == interaction.id && $0.title == cleaned }) { ids.append(existing.id); continue }
+                if let existing = try commitments().first(where: { $0.interactionId.map(matchingInteractions.contains) == true && $0.title == cleaned }) { ids.append(existing.id); continue }
                 let value = try insertCommitment(contactId: person.id, title: cleaned, dueDate: draft["dueDate"] as? String, direction: draft["direction"] as? String ?? "i_owe", priority: draft["priority"] as? String ?? "normal", notes: draft["notes"] as? String ?? "", interactionId: interaction.id)
                 ids.append(value.id)
             }

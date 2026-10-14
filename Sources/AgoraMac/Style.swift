@@ -95,6 +95,7 @@ struct PromiseRow: View {
 struct ActivityRow: View {
     @EnvironmentObject var model: AppModel
     var item: Interaction
+    var showsTime = false
     var body: some View {
         Button { model.sheet = .source(item) } label: {
             HStack(alignment: .top, spacing: 12) {
@@ -104,7 +105,7 @@ struct ActivityRow: View {
                     HStack(spacing: 5) { Text(model.person(item.contactId)?.name ?? "Unknown person"); Text("·"); Text(item.kind.capitalized); if item.source == "outlook" { Text("· Outlook") } }.font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(Date(timeIntervalSince1970: item.occurredAt).formatted(.dateTime.day().month(.abbreviated))).font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text(showsTime ? Date(timeIntervalSince1970: item.occurredAt).formatted(date: .abbreviated, time: .shortened) : Date(timeIntervalSince1970: item.occurredAt).formatted(.dateTime.day().month(.abbreviated))).font(.system(size: 10)).foregroundStyle(.tertiary)
             }.padding(.vertical, 13).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }

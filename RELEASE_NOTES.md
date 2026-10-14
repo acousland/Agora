@@ -1,3 +1,13 @@
+# Agora 1.2.0
+
+- Delete a person and their history from People → More, with a confirmation showing interaction and commitment counts and an automatic private database backup.
+- Merge duplicate people into a chosen profile. Keep all conversations, commitments and source links; retain alternate email addresses, combine tags and notes, and preserve conflicting profile details in notes.
+- Search for merged people by their alternate addresses. Future email capture recognises those addresses and remains idempotent when duplicate message copies are merged.
+- Group the timeline by date or person, and show the elapsed time since each person's previous interaction. Gaps use the complete history even when filters hide earlier interactions.
+- Show full interaction dates and times in the timeline. Remember the chosen grouping.
+
+The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+
 # Agora 1.1.1
 
 - Show a green checkmark and Configured badge for each AI client when its saved settings match the installed Agora helper and current library.

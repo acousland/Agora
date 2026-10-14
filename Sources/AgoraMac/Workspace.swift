@@ -40,6 +40,7 @@ struct Workspace: View {
         .sheet(item: $model.sheet) { editor in
             switch editor {
             case .person(let person): PersonEditor(person: person)
+            case .merge(let person): MergePeopleEditor(source: person)
             case .commitment(let commitment, let person): CommitmentEditor(commitment: commitment, personId: person)
             case .interaction(let person): InteractionEditor(personId: person)
             case .source(let interaction): SourceView(item: interaction)

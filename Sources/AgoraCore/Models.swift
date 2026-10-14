@@ -11,6 +11,8 @@ public struct Person: Codable, Identifiable, Equatable, Sendable {
     public var createdAt: Double
     public var updatedAt: Double
     public var revision: Int
+    public var alternateEmails: [String]? = nil
+    public var emailAddresses: [String] { ([email] + (alternateEmails ?? [])).filter { !$0.isEmpty } }
     public var initials: String { name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased() }
 }
 
@@ -23,6 +25,7 @@ public struct Interaction: Codable, Identifiable, Equatable, Sendable {
     public var occurredAt: Double
     public var source: String
     public var externalId: String?
+    public var duplicateExternalId: String? = nil
 }
 
 public struct Commitment: Codable, Identifiable, Equatable, Sendable {

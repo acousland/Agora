@@ -23,8 +23,8 @@ import AgoraCore
         var subtitle: String { switch self { case .overview: "A little attention goes a long way."; case .people: "The people behind your promises."; case .commitments: "Keep track. Follow through."; case .timeline: "Your conversations, remembered."; case .connections: "Your relationships, connected." } }
     }
     enum Editor: Identifiable {
-        case person(Person?), commitment(Commitment?, String?), interaction(String?), source(Interaction)
-        var id: String { switch self { case .person(let p): "person-\(p?.id ?? "new")"; case .commitment(let c, _): "promise-\(c?.id ?? "new")"; case .interaction: "interaction"; case .source(let i): "source-\(i.id)" } }
+        case person(Person?), merge(Person), commitment(Commitment?, String?), interaction(String?), source(Interaction)
+        var id: String { switch self { case .person(let p): "person-\(p?.id ?? "new")"; case .merge(let p): "merge-\(p.id)"; case .commitment(let c, _): "promise-\(c?.id ?? "new")"; case .interaction: "interaction"; case .source(let i): "source-\(i.id)" } }
     }
     init() {
         do {
@@ -100,12 +100,15 @@ import AgoraCore
             if let sectionIndex = CommandLine.arguments.firstIndex(of: "--render-section"), CommandLine.arguments.count > sectionIndex + 1,
                let section = AppModel.Section(rawValue: CommandLine.arguments[sectionIndex + 1]) { previewModel.section = section }
             if CommandLine.arguments.contains("--render-source") { previewModel.selectedCommitment = previewModel.commitments.first { $0.interactionId != nil }?.id }
-            let height: CGFloat = previewModel.section == .connections ? 1700 : 850
-            let view = Workspace().environmentObject(previewModel).environmentObject(Updates()).frame(width: 1320, height: height).environment(\.colorScheme, .light)
+            let mergePreview = CommandLine.arguments.contains("--render-merge") && previewModel.people.count > 1
+            let width: CGFloat = mergePreview ? 520 : 1320
+            let height: CGFloat = mergePreview ? 500 : previewModel.section == .connections ? 1700 : 850
+            let content = mergePreview ? AnyView(MergePeopleEditor(source: previewModel.people[0], targetId: previewModel.people[1].id)) : AnyView(Workspace())
+            let view = content.environmentObject(previewModel).environmentObject(Updates()).frame(width: width, height: height).environment(\.colorScheme, .light)
             let hosting = NSHostingView(rootView: view)
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = hosting
-            hosting.frame = NSRect(x: 0, y: 0, width: 1320, height: height)
+            hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
             hosting.layoutSubtreeIfNeeded()
             // Let asynchronous configuration checks populate the native preview.
             RunLoop.main.run(until: Date().addingTimeInterval(0.5))

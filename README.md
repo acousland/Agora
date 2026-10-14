@@ -14,10 +14,10 @@ Releases are Developer ID signed. See each release's notes for its notarisation 
 
 ## Keep your word
 
-- **People** keeps names, email addresses, companies, roles, tags and personal notes.
+- **People** keeps names, email addresses, companies, roles, tags and personal notes. Use **More** on a profile, or right-click a person, to merge or delete records. Merging keeps conversations and commitments and retains alternate email addresses; deletion requires confirmation. Both save a private database backup in the library's `Backups` folder first.
 - **Commitments** distinguishes promises you made from promises someone made to you. Record a deadline, priority, notes and the source conversation; mark it kept, reopen it or cancel it.
 - **Overview** brings overdue promises, today's commitments and recent conversations together.
-- **Timeline** records emails, meetings, calls, messages and notes.
+- **Timeline** records emails, meetings, calls, messages and notes. Group by date or person and see the elapsed time since each person's previous interaction. These gaps use the full history, including interactions hidden by search or type filters.
 - **Connections** walks through Outlook and MCP setup, JSON import/export and consistent SQLite backups.
 
 Keyboard shortcuts: **⌘N** new commitment, **⇧⌘N** new person, **⌘L** log interaction, **⌘R** refresh.
