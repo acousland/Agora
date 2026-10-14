@@ -1,9 +1,16 @@
+# Agora 1.2.2
+
+- Publish a notarised build of the Outlook task pane URL fix from 1.2.1, now that the local notarisation profile is accessible again.
+- Retain the packaged-app checks for Office URL parameters, secure pairing and authenticated email capture.
+
+The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+
 # Agora 1.2.1
 
 - Fix the Outlook task pane showing “Not found” when Office appends parameters to the page URL. Serve the same bundled page and assets while preserving authentication and the strict file allowlist.
 - Exercise Office-style task pane URLs and authenticated email capture with an isolated packaged app before publishing each release.
 
-This release is Developer ID signed. Apple notarisation is unavailable because the saved local Keychain profile is missing; this release has no notarisation ticket.
+This release is Developer ID signed. The saved local notarisation Keychain profile was unavailable at publication; this release has no notarisation ticket.
 
 # Agora 1.2.0
 
