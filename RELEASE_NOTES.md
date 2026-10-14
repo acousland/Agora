@@ -3,7 +3,7 @@
 - Fix the Outlook task pane showing “Not found” when Office appends parameters to the page URL. Serve the same bundled page and assets while preserving authentication and the strict file allowlist.
 - Exercise Office-style task pane URLs and authenticated email capture with an isolated packaged app before publishing each release.
 
-The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+This release is Developer ID signed. Apple notarisation is unavailable because the saved local Keychain profile is missing; this release has no notarisation ticket.
 
 # Agora 1.2.0
 
