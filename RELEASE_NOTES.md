@@ -1,3 +1,12 @@
+# Agora 1.1.1
+
+- Show a green checkmark and Configured badge for each AI client when its saved settings match the installed Agora helper and current library.
+- Show clear warnings for missing, disabled, outdated or unreadable configuration, with a reason and a setup action.
+- Refresh configuration status after setup, when Agora becomes active, or with Check configuration.
+- Reject misleading configured states when the helper is missing or arguments, transport or library settings are incorrect.
+
+The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+
 # Agora 1.1.0
 
 - Set up local MCP connections for Codex / ChatGPT, Claude Desktop and Claude Code directly in Connections, with configuration backups and status reporting.

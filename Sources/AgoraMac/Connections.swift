@@ -4,10 +4,12 @@ import UniformTypeIdentifiers
 
 struct ConnectionsView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var configuring = false
     @State private var copied = ""
-    @State private var clientStatus: [MCPClient: String] = [:]
+    @State private var clientStatus: [MCPClient: MCPClientStatus] = [:]
     @State private var settingUpClient = false
+    @State private var checkingClients = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -37,13 +39,18 @@ struct ConnectionsView: View {
                         ForEach(MCPClient.allCases, id: \.self) { client in
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(client.name).font(.system(size: 12, weight: .medium))
-                                    Text(clientStatus[client] ?? "Checking configuration…").font(.system(size: 11)).foregroundStyle(.secondary)
+                                    HStack(spacing: 10) {
+                                        Text(client.name).font(.system(size: 12, weight: .medium))
+                                        configurationBadge(clientStatus[client])
+                                    }
+                                    Text(clientStatus[client]?.detail ?? "Reading the saved client settings…").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                                 }
                                 Spacer()
-                                Button("Set up \(client.name)") { install(client) }.buttonStyle(.bordered).disabled(settingUpClient || model.store == nil)
+                                Button(clientStatus[client]?.isConfigured == true ? "Configure again" : "Set up") { install(client) }.buttonStyle(.bordered).disabled(settingUpClient || checkingClients || model.store == nil).accessibilityLabel("Set up \(client.name)")
                             }
                         }
+                        Button("Check configuration", systemImage: "arrow.clockwise") { Task { await refreshClientStatus() } }.buttonStyle(.bordered).disabled(checkingClients || settingUpClient)
+                        Text("Green means the saved configuration matches this Agora installation and library. Restart the client after setup; its MCP screen shows the live connection.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
                         Text("Setup adds agora-local for this library and backs up existing settings. Quit and reopen the client afterward. OpenAI setup uses the Codex CLI, including the copy bundled with ChatGPT, and is shared by desktop, CLI and IDE clients on this Mac.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
                     }
                 }
@@ -58,13 +65,26 @@ struct ConnectionsView: View {
                 }
             }.padding(32).frame(maxWidth: 920, alignment: .leading).frame(maxWidth: .infinity)
         }.task { await refreshClientStatus() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await refreshClientStatus() } } }
     }
     private var helperPath: String { Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/AgoraMCP").path : URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().appendingPathComponent("AgoraMCP").path }
     private var mcpConfig: String {
         (try? registration.configurationJSON()) ?? ""
     }
     private var registration: MCPRegistration { MCPRegistration(helper: URL(fileURLWithPath: helperPath), library: model.store?.directory ?? Store.defaultDirectory) }
+    private func configurationBadge(_ status: MCPClientStatus?) -> some View {
+        let color = status?.state == .configured ? Style.green : status?.state == .invalid ? Style.red : status == nil ? Color.secondary : Style.orange
+        let icon = status?.isConfigured == true ? "checkmark.circle.fill" : status == nil ? "clock" : "exclamationmark.circle.fill"
+        return Label(status?.title ?? "Checking…", systemImage: icon)
+            .font(.system(size: 10, weight: .semibold)).foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 5).background(color.opacity(0.09), in: Capsule())
+            .accessibilityElement(children: .combine)
+    }
     private func refreshClientStatus() async {
+        guard !checkingClients, !settingUpClient else { return }
+        checkingClients = true
+        clientStatus = [:]
+        defer { checkingClients = false }
         let setup = registration
         clientStatus = await Task.detached { Dictionary(uniqueKeysWithValues: MCPClient.allCases.map { ($0, setup.status($0)) }) }.value
     }

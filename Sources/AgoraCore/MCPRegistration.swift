@@ -8,6 +8,23 @@ public enum MCPClient: String, CaseIterable, Sendable {
     }
 }
 
+public struct MCPClientStatus: Equatable, Sendable {
+    public enum State: Sendable { case configured, notConfigured, needsUpdate, disabled, unavailable, invalid }
+    public let state: State
+    public let detail: String
+    public var isConfigured: Bool { state == .configured }
+    public var title: String {
+        switch state {
+        case .configured: return "Configured"
+        case .notConfigured: return "Not configured"
+        case .needsUpdate: return "Needs updating"
+        case .disabled: return "Disabled"
+        case .unavailable: return "Setup unavailable"
+        case .invalid: return "Check settings"
+        }
+    }
+}
+
 /// Client setup is explicit. Opening Agora never changes another application's settings.
 public struct MCPRegistration: Sendable {
     public let helper: URL
@@ -30,25 +47,46 @@ public struct MCPRegistration: Sendable {
             return home.appendingPathComponent(".claude.json")
         }
     }
-    public func status(_ client: MCPClient) -> String {
+    public func status(_ client: MCPClient) -> MCPClientStatus {
         do {
             let value: [String: Any]?
             if client == .codex {
-                guard let cli = codexCLI else { return "Install the Codex CLI to enable setup" }
+                guard let cli = codexCLI else { return .init(state: .unavailable, detail: "Install Codex or ChatGPT desktop to enable setup.") }
                 let result = try run(cli, ["mcp", "get", "agora-local", "--json"])
-                if result.code != 0 { return result.text.contains("No MCP server named") ? "Not configured" : "Could not read Codex configuration" }
-                let data = try JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any]
-                if data?["enabled"] as? Bool == false { return "Disabled in Codex" }
-                value = data?["transport"] as? [String: Any]
+                if result.code != 0 {
+                    return result.text.contains("No MCP server named")
+                        ? .init(state: .notConfigured, detail: "Set up Agora to make its tools available to this client.")
+                        : .init(state: .invalid, detail: "Could not read Codex configuration. Check its settings and try again.")
+                }
+                guard let data = try JSONSerialization.jsonObject(with: Data(result.text.utf8)) as? [String: Any], var transport = data["transport"] as? [String: Any] else {
+                    return .init(state: .invalid, detail: "Codex returned an unreadable server configuration.")
+                }
+                if data["enabled"] as? Bool == false { return .init(state: .disabled, detail: "Enable agora-local in Codex / ChatGPT MCP settings.") }
+                // The CLI represents an omitted optional environment as JSON null.
+                if transport["env"] is NSNull { transport.removeValue(forKey: "env") }
+                value = transport
             } else {
-                value = try readJSON(configurationURL(client))["mcpServers"].flatMap { $0 as? [String: Any] }?["agora-local"] as? [String: Any]
+                let root = try readJSON(configurationURL(client))
+                if let servers = root["mcpServers"], !(servers is [String: Any]) { return .init(state: .invalid, detail: "The client's mcpServers setting must be a JSON object.") }
+                let entry = (root["mcpServers"] as? [String: Any])?["agora-local"]
+                if let entry, !(entry is [String: Any]) { return .init(state: .invalid, detail: "The agora-local setting must be a JSON object.") }
+                value = entry as? [String: Any]
             }
-            guard let value else { return "Not configured" }
+            guard let value else { return .init(state: .notConfigured, detail: "Set up Agora to make its tools available to this client.") }
+            if let args = value["args"], !(args is [String]) { return .init(state: .invalid, detail: "The helper's arguments must be a list of strings.") }
+            if let env = value["env"], !(env is [String: String]) { return .init(state: .invalid, detail: "The helper's environment settings must contain string values.") }
+            do { try validateInstalledHelper() }
+            catch { return .init(state: .needsUpdate, detail: "Install Agora in Applications and configure this client again.") }
+            guard value["command"] as? String == helper.path, (value["args"] as? [String] ?? []).isEmpty,
+                  value["type"] == nil || value["type"] as? String == "stdio" else {
+                return .init(state: .needsUpdate, detail: "The saved settings do not point to this Agora helper. Run setup again.")
+            }
             let env = value["env"] as? [String: String] ?? [:]
             let defaultLibrary = home.appendingPathComponent("Library/Application Support/Agora").path
-            let sameLibrary = env["AGORA_DATA_DIR"] == library.path || (env["AGORA_DATA_DIR"] == nil && library.path == defaultLibrary)
-            return value["command"] as? String == helper.path && (value["args"] as? [String] ?? []).isEmpty && sameLibrary ? "Configured · restart client after setup" : "Setup needs updating"
-        } catch { return "Could not read configuration" }
+            let sameLibrary = env["AGORA_DATA_DIR"] == library.path || ((env["AGORA_DATA_DIR"] ?? "").isEmpty && library.path == defaultLibrary)
+            guard sameLibrary else { return .init(state: .needsUpdate, detail: "This client points to a different library. Run setup to connect this library.") }
+            return .init(state: .configured, detail: "The installed helper and library match the saved settings.")
+        } catch { return .init(state: .invalid, detail: "Could not read the client configuration. Check its file and try again.") }
     }
     public func install(_ client: MCPClient) throws {
         try validateInstalledHelper()

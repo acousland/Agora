@@ -22,6 +22,8 @@ For command-line setup, the installed helper also accepts:
 
 Set `AGORA_DATA_DIR` on the setup command for a custom library. Setup does not require the app to run, does not seed a library, and writes its confirmation to stderr. App updates replace the helper at the same path, so configuration survives updates; restart the client to launch the new helper.
 
+Connections shows a green **Configured** checkmark when the saved helper path, arguments and library match this installed copy of Agora. Missing or outdated settings show an amber badge; unreadable settings show a red warning. Use **Check configuration** to recheck. Status also refreshes after setup and when Agora becomes active. The indicator confirms saved configuration; restart the client after setup and use its MCP screen to confirm the live connection.
+
 ## Claude Desktop and other JSON clients
 
 Merge this entry into the client's existing `mcpServers` object, preserving other servers, then restart the client:

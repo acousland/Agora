@@ -107,6 +107,9 @@ import AgoraCore
             window.contentView = hosting
             hosting.frame = NSRect(x: 0, y: 0, width: 1320, height: height)
             hosting.layoutSubtreeIfNeeded()
+            // Let asynchronous configuration checks populate the native preview.
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            hosting.layoutSubtreeIfNeeded()
             if let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
                 hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
                 if let data = bitmap.representation(using: .png, properties: [:]) { try? data.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1])) }

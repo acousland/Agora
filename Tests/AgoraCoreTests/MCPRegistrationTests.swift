@@ -29,7 +29,7 @@ final class MCPRegistrationTests: XCTestCase {
             XCTAssertEqual(backups.count, 1); XCTAssertEqual(try Data(contentsOf: backups[0]), original)
             for file in [url, backups[0]] { XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600) }
             try setup.install(client)
-            XCTAssertTrue(setup.status(client).hasPrefix("Configured"))
+            XCTAssertEqual(setup.status(client).state, .configured)
         }
     }
     func testMalformedSettingsRemainUntouched() throws {
@@ -58,6 +58,40 @@ final class MCPRegistrationTests: XCTestCase {
         XCTAssertTrue(config.contains("[mcp_servers.other]")); XCTAssertTrue(config.contains("command = \"/other\"")); XCTAssertTrue(config.contains("AGORA_DATA_DIR"))
         XCTAssertEqual(config.components(separatedBy: "[mcp_servers.agora-local]").count, 2)
         let status = setup.status(.codex)
-        XCTAssertTrue(status.hasPrefix("Configured"), status)
+        XCTAssertEqual(status.state, .configured, status.detail)
+        try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "[mcp_servers.agora-local]", with: "[mcp_servers.agora-local]\nenabled = false").write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(setup.status(.codex).state, .disabled)
+        try Data("[mcp_servers.agora-local]\ncommand = \"\(setup.helper.path)\"\n".utf8).write(to: url)
+        let defaultLibrarySetup = MCPRegistration(helper: setup.helper, library: home.appendingPathComponent("Library/Application Support/Agora"), home: home, environment: setup.environment)
+        XCTAssertEqual(defaultLibrarySetup.status(.codex).state, .configured)
+    }
+    func testConfigurationIndicatorRejectsWrongLibraryHelperAndArguments() throws {
+        XCTAssertEqual(setup.status(.claudeCode).state, .notConfigured)
+        try setup.install(.claudeCode)
+        XCTAssertTrue(setup.status(.claudeCode).isConfigured)
+        let url = setup.configurationURL(.claudeCode)
+        for patch: [String: Any] in [
+            ["command": "/a/previous/AgoraMCP"], ["env": ["AGORA_DATA_DIR": "/another/library"]],
+            ["args": ["--configure-client", "codex"]], ["type": "http"]
+        ] {
+            var entry = setup.entry; entry.merge(patch) { _, new in new }
+            try JSONSerialization.data(withJSONObject: ["mcpServers": ["agora-local": entry]]).write(to: url)
+            XCTAssertEqual(setup.status(.claudeCode).state, .needsUpdate)
+        }
+        try setup.install(.claudeCode)
+        try FileManager.default.removeItem(at: setup.helper)
+        XCTAssertEqual(setup.status(.claudeCode).state, .needsUpdate)
+    }
+    func testConfigurationIndicatorRejectsMalformedSettings() throws {
+        let url = setup.configurationURL(.claudeCode)
+        for source in ["{invalid", "[]", "{\"mcpServers\":[]}", "{\"mcpServers\":{\"agora-local\":true}}"] {
+            try Data(source.utf8).write(to: url)
+            XCTAssertEqual(setup.status(.claudeCode).state, .invalid)
+        }
+        for patch: [String: Any] in [["args": true], ["env": ["AGORA_DATA_DIR": 123]]] {
+            var entry = setup.entry; entry.merge(patch) { _, new in new }
+            try JSONSerialization.data(withJSONObject: ["mcpServers": ["agora-local": entry]]).write(to: url)
+            XCTAssertEqual(setup.status(.claudeCode).state, .invalid)
+        }
     }
 }
