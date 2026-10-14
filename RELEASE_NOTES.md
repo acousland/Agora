@@ -1,3 +1,10 @@
+# Agora 1.2.1
+
+- Fix the Outlook task pane showing “Not found” when Office appends parameters to the page URL. Serve the same bundled page and assets while preserving authentication and the strict file allowlist.
+- Exercise Office-style task pane URLs and authenticated email capture with an isolated packaged app before publishing each release.
+
+The app and disk image are Developer ID signed, notarised by Apple and include stapled tickets.
+
 # Agora 1.2.0
 
 - Delete a person and their history from People → More, with a confirmation showing interaction and commitment counts and an automatic private database backup.

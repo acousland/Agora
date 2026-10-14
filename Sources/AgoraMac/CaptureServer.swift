@@ -79,10 +79,13 @@ final class CaptureServer: @unchecked Sendable {
             if complete { connection.cancel() } else { self.receive(connection, buffer: buffer) }
         }
     }
-    private func handle(_ connection: NWConnection, method: String, path: String, headers: [String: String], body: Data) {
+    private func handle(_ connection: NWConnection, method: String, path target: String, headers: [String: String], body: Data) {
         let hosts: Set<String> = ["localhost:3848", "127.0.0.1:3848"]
         let origins: Set<String> = ["https://localhost:3848", "https://127.0.0.1:3848"]
         guard let host = headers["host"], hosts.contains(host.lowercased()), headers["origin"].map(origins.contains) ?? true else { respond(connection, status: 403, text: "Origin rejected"); return }
+        // Office can append host metadata to SourceLocation. Route by the path,
+        // retaining the exact asset allowlist rather than treating a query as a filename.
+        let path = String(target.prefix { $0 != "?" })
         if method == "GET" && path == "/health" { respond(connection, status: 200, text: "Agora Outlook connection is ready."); return }
         if path.hasPrefix("/api/") {
             guard let token = try? store.pairingToken(), let auth = headers["authorization"], constantTimeEqual(auth, "Bearer \(token)") else { respond(connection, status: 401, text: "Pair the add-in with your Agora key."); return }

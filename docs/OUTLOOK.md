@@ -17,6 +17,7 @@ Each commitment can be a promise you made or a promise made to you, with an opti
 ## Troubleshooting
 
 - **Task pane cannot load:** keep Agora open, check that Connections says it is listening, and visit `https://localhost:3848/health` from a browser on this Mac. Rerun HTTPS setup if the certificate has expired or trust was removed.
+- **Task pane says “Not found”:** install Agora 1.2.1 or later, then quit and reopen Agora and close and reopen the Outlook task pane. Earlier versions rejected Office's extra URL parameters. The existing add-in installation can stay in place.
 - **Connection unavailable / port in use:** quit another copy of Agora using port 3848 and relaunch.
 - **Pairing rejected:** copy the latest key. Rotating the key in Agora revokes the old pairing; disconnect and reconnect the add-in.
 - **Custom add-in option missing:** your mailbox may not support Outlook add-ins, or your organisation may restrict sideloading. The XML manifest may need to be deployed by your Microsoft 365 administrator.

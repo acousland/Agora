@@ -23,12 +23,20 @@ def request(method, path, payload=None, *, auth=True, origin=None, host=None):
 
 assert request("GET", "/health", auth=False)[0] == 200
 assert request("GET", "/api/ping", auth=False)[0] == 401
+assert request("GET", "/api/ping?client=outlook", auth=False)[0] == 401
 assert request("GET", "/api/ping", origin="https://evil.example")[0] == 403
 assert request("GET", "/api/ping", host="evil.example:3848")[0] == 403
 assert request("GET", "/api/ping")[0] == 200
+assert request("GET", "/api/ping?client=outlook")[0] == 200
+taskpane = request("GET", "/taskpane.html", auth=False)
+for path in ["/taskpane.html?_host_Info=Outlook%24Mac%2416.113.4%24en-US", "/taskpane.html?et=&_host_Info=Outlook$Mac&locale=en-AU", "/?_host_Info=Outlook%24Mac", "/taskpane.html?"]:
+    assert request("GET", path, auth=False) == taskpane, path
 for asset in ["taskpane.html", "taskpane.js", "taskpane.css", "manifest.xml", "icon-16.png", "icon-32.png", "icon-64.png", "icon-80.png"]:
     assert request("GET", "/" + asset, auth=False)[0] == 200, asset
+    assert request("GET", "/" + asset + "?v=1", auth=False) == request("GET", "/" + asset, auth=False), asset
 assert request("GET", "/../outlook-token", auth=False)[0] == 404
+for path in ["/../outlook-token?file=taskpane.html", "/%2e%2e/outlook-token?file=taskpane.html", "/missing.html?file=taskpane.html"]:
+    assert request("GET", path, auth=False)[0] == 404, path
 payload = {"contactName": "Outlook Test", "contactEmail": "outlook-test@example.com", "subject": "A real HTTPS capture test", "body": "I promised to share the proposal.", "externalId": "agora-https-smoke", "commitments": [{"title": "Share the proposal", "dueDate": "2026-10-16", "direction": "i_owe"}]}
 status, body = request("POST", "/api/capture", payload)
 assert status == 200, body
@@ -41,4 +49,4 @@ payload["externalId"] = "agora-bad-https-smoke"
 payload["contactEmail"] = "invalid-test@example.com"
 payload["commitments"][0]["dueDate"] = "2026-02-30"
 assert request("POST", "/api/capture", payload)[0] == 400
-print("Outlook HTTPS smoke passed: TLS certificate, pairing, Origin/Host validation, assets, path restrictions, atomic capture, duplicate protection, invalid-date rejection.")
+print("Outlook HTTPS smoke passed: TLS certificate, pairing, Origin/Host validation, assets with Office URL parameters, path restrictions, atomic capture, duplicate protection, invalid-date rejection.")
