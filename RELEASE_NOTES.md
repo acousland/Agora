@@ -7,6 +7,7 @@
 - Expand MCP verification to cover all ten tools, error recovery, pagination, atomic capture and stale writes.
 - Independently verify update signatures against the public key shipped in the app, and require Developer ID signing for publication.
 - Normalize imported contact profiles before enforcing email uniqueness; reject invalid tags and revision overflow, and allow pairing-key rotation before first use.
+- Prevent demo mode from adding sample data when the data directory is empty or points to the default private library.
 
 This release is Developer ID signed and notarised by Apple. The app and disk image include stapled notarisation tickets.
 

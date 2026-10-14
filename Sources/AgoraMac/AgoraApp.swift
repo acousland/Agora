@@ -28,8 +28,17 @@ import AgoraCore
     }
     init() {
         do {
+            let demo = ProcessInfo.processInfo.arguments.contains("--demo")
+            if demo {
+                let path = ProcessInfo.processInfo.environment["AGORA_DATA_DIR"] ?? ""
+                let privateLibrary = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Agora")
+                guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath() != privateLibrary.standardizedFileURL.resolvingSymlinksInPath() else {
+                    throw AgoraError.invalid("Demo mode requires AGORA_DATA_DIR to point to a separate, nonempty library path.")
+                }
+            }
             let store = try Store(); self.store = store
-            if ProcessInfo.processInfo.arguments.contains("--demo") && ProcessInfo.processInfo.environment["AGORA_DATA_DIR"] != nil {
+            if demo {
                 if try store.contacts().isEmpty { try Self.seedDemo(store) }
             }
         } catch { store = nil; self.error = error.localizedDescription }

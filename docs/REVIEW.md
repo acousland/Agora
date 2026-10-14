@@ -14,6 +14,7 @@ Scope: native SwiftUI app, shared SQLite store, stdio MCP helper, Outlook receiv
 | Low | Sparkle supported background checks, but the app exposed no update preferences. | Connections now offers automatic checks, automatic download / installation and a manual check with availability tracking. Automatic installation remains a user preference. |
 | Low | The MCP handshake always advertised 1.0.0 and overstated data privacy. | The helper reports its bundled app version and explains that the connected client can send records to its model provider. |
 | Low | Rotating the Outlook pairing key before its first creation failed. Creating contacts silently dropped tags beyond the limit. | Rotation creates a key when necessary; contact creation rejects more than 30 tags consistently. |
+| Medium | An empty `AGORA_DATA_DIR` with `--demo` could add sample data to the default library. | Demo mode now requires a nonempty path to a separate library, including protection against symlinks to the default library, before opening storage. |
 
 ## Verification
 
